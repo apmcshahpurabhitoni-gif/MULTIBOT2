@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multibot2"
+version = "0.1.0"
+description = "Clean-slate Mavis trading bot"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+
+[tool.setuptools]
+py-modules = [
+    "main",
+    "config",
+    "market_data",
+    "candles",
+    "strategies",
+    "trading",
+    "telegram",
+    "backtest",
+    "dashboard",
+]
