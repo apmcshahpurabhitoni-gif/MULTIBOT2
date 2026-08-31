@@ -6,37 +6,28 @@ Freeze the authoritative product scope, contracts, unresolved business decisions
 ## Governing workflow
 READ SPEC → DEFINE SCOPE → DESIGN TESTS → IMPLEMENT ONLY CURRENT PHASE → RUN TESTS → FIX FAILURES → RUN REGRESSION → REVIEW DIFF → RUN CI → VERIFY CI COMPLETED/PASSED → COMPLETE GATE → WRITE HANDOFF → MARK PASSED → ONLY THEN NEXT PHASE.
 
-Any failure keeps the repository in the current phase until the root cause is fixed and the full required verification is repeated.
+## Current state
+Phase 0 remains active and NOT PASSED.
 
-## Current execution order
-1. Complete Phase 0 evidence and research.
-2. Keep TrendPulse implementation deferred until the user supplies the code.
-3. Freeze Telegram only from exact user-supplied messages.
-4. Resolve/review provider, objective NSE 15-stock universe, and hosting/runtime using documented research.
-5. Run the formal Phase 0 gate.
-6. Only after Phase 0 PASS, create the Phase 1 branch and implement Foundation.
+### Frozen
+- Sweep V2 scope and rules from supplied specifications.
+- TrendPulse historical formula baseline as conditionally approved by the user.
+- TrendPulse freshness: <=60m FRESH; >60m STALE; no special 6h threshold.
+- Paper trading only; live broker disabled initially.
+- Repository/architecture/test/CI/security baselines.
 
-## Locked rules
-- NIFTY/BANK NIFTY Sweep: 1H.
-- Sweep starts: 09:15, 10:15, 11:15, 12:15, 13:15, 14:15 IST.
-- No normal 15:15–16:15 Sweep candle.
-- Closed candle only.
-- Strict two-sided Sweep requirement.
-- Equality is not a break.
-- Exact BUY/SELL/NEUTRAL/NO_SIGNAL rules from Sweep V2.
-- Freshness: <=60m FRESH; >60m STALE.
-- Sweep paper-trade SL/TP rules are frozen by supplied specs.
-- Live broker execution disabled initially; paper trading enabled.
-- Dashboard cannot calculate business truth.
-- Backtest uses canonical strategy engines.
-- Approved Telegram messages are immutable after approval.
-- CI is read-only.
+### Research completed
+- Provider: DhanHQ recommended for NSE/Indian market data; Twelve Data recommended as secondary/global/XAU source if TrendPulse confirms XAU/USD requirement.
+- Stock universe: top 15 Nifty 50 constituents by free-float weight, using the latest complete official 15-name snapshot located, recommended as the objective universe.
+- Hosting: Render + Supabase Pro recommended.
 
-## TrendPulse
-The user approved the historical formula evidence as the canonical baseline but instructed that the TrendPulse code will be supplied later. Implementation is deferred. The user explicitly locked freshness to <=60 minutes FRESH and >60 minutes STALE; there is no special 6-hour threshold.
+### Still required before Phase 0 PASS
+- Exact approved Telegram messages from the user.
+- TrendPulse code from the user so remaining strategy-specific rules are reconstructed rather than guessed.
+- Final confirmation of conditional provider/stock/hosting recommendations after the exact TrendPulse market universe is known.
 
-## Research results
-Provider, stock-universe and hosting research is documented in `docs/OPEN_DECISIONS.md`. These recommendations are not silently treated as final approval where the remaining TrendPulse/Telegram evidence can materially change the requirements.
+## Phase-order enforcement
+A temporary Phase 1 branch/PR was created while following the user's instruction to build non-TrendPulse work. The governing rules require Phase 0 PASS before Phase 1, so that work is isolated and is not merge-authorized. No Phase 1 pass is claimed.
 
-## Gate
-Phase 0 is NOT PASSED. The exact Telegram copy and TrendPulse code/evidence remain required before the formal gate can be completed. No Phase 1 work may be merged or treated as authorized before PASS.
+## Next action
+Remain in Phase 0. Do not merge Phase 1 or begin Phase 2 until Phase 0 is formally passed.
