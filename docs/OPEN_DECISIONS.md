@@ -16,7 +16,14 @@ Approved baseline evidence includes:
 - Bullish branch: 4H close > 4H EMA50; previous MACD <= previous signal; current MACD > current signal; 1H RSI > 50 and < 80; 1H close > 1H EMA20.
 - Bearish branch: 4H close < 4H EMA50; previous MACD >= previous signal; current MACD < current signal; 1H RSI < 50 and > 20; 1H close < 1H EMA20.
 
-This approval does NOT silently approve values that the evidence does not establish. Entry, SL, TP, freshness, repeat/dedup behavior, missing-data behavior, market universe, and any other unresolved conflicts must be reconstructed from supplied evidence or explicitly decided; they must not be guessed.
+## Explicit freshness decision
+
+The user has now explicitly rejected a special 6-hour freshness rule. The desired canonical freshness boundary is the historical 1-hour rule shown in the supplied Telegram evidence:
+- `FRESH` when the referenced candle closed <= 1 hour ago.
+- `STALE` when the referenced candle closed > 1 hour ago.
+- No separate 6-hour threshold or special 6-hour freshness state is to be introduced.
+
+A 6-hour-old signal is therefore simply `STALE` under the same >1h rule. The historical regression F-006 must be interpreted as guarding against reintroducing a 6h-vs-1h inconsistency, not as authorizing a 6-hour freshness threshold.
 
 ## Open decisions
 
@@ -24,7 +31,7 @@ This approval does NOT silently approve values that the evidence does not establ
 |---|---|---|---|---|
 | OD-001 | CONDITIONALLY APPROVED | TrendPulse historical formula baseline | User approved source-derived formula evidence as canonical reconstruction baseline | Phase 0 until conflicts resolved |
 | OD-002 | OPEN | TrendPulse entry / SL / TP | Not established by supplied evidence | Phase 0 / Phase 4 |
-| OD-003 | OPEN | TrendPulse exact freshness, including 6-hour stale issue | Not established by supplied evidence | Phase 0 / Phase 4 |
+| OD-003 | APPROVED | TrendPulse freshness | User explicitly approved 1-hour FRESH/STALE boundary; no special 6-hour rule | Phase 0 / Phase 4 |
 | OD-004 | OPEN | TrendPulse genuinely-new-signal and repeat/dedup behavior, including new-message behavior | Not established by supplied evidence | Phase 0 / Phase 4 / Phase 6 |
 | OD-005 | OPEN | TrendPulse missing-data fail-safe contract | Must never fabricate or assume missing values; exact behavior still needs freezing | Phase 0 / Phase 4 |
 | OD-006 | OPEN | TrendPulse market/timeframe universe | Historical evidence constrains the implementation but does not establish final approved universe | Phase 0 / Phase 4 |
@@ -43,7 +50,7 @@ This approval does NOT silently approve values that the evidence does not establ
 - Strict two-sided Sweep requirement.
 - Equality is not a break.
 - Exact BUY/SELL/NEUTRAL/NO_SIGNAL classification rules from the supplied Sweep V2 specification.
-- Freshness <=60m FRESH, >60m STALE.
+- Sweep freshness <=60m FRESH, >60m STALE.
 - Paper-trade SL/TP rules from the supplied paper-trading/locked rules.
 - Dashboard cannot calculate business truth.
 - Backtest uses canonical strategy engines.
