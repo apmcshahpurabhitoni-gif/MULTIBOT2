@@ -16,24 +16,27 @@ Approved baseline evidence includes:
 - Bullish branch: 4H close > 4H EMA50; previous MACD <= previous signal; current MACD > current signal; 1H RSI > 50 and < 80; 1H close > 1H EMA20.
 - Bearish branch: 4H close < 4H EMA50; previous MACD >= previous signal; current MACD < current signal; 1H RSI < 50 and > 20; 1H close < 1H EMA20.
 
-## Explicit freshness decision
+This approval does NOT silently approve values that the evidence does not establish. Entry, SL, TP, freshness, repeat/dedup behavior, missing-data behavior, market universe, and any other unresolved conflicts must be reconstructed from supplied evidence or explicitly decided; they must not be guessed.
 
-The user has now explicitly rejected a special 6-hour freshness rule. The desired canonical freshness boundary is the historical 1-hour rule shown in the supplied Telegram evidence:
-- `FRESH` when the referenced candle closed <= 1 hour ago.
-- `STALE` when the referenced candle closed > 1 hour ago.
-- No separate 6-hour threshold or special 6-hour freshness state is to be introduced.
+## User-locked TrendPulse freshness
 
-A 6-hour-old signal is therefore simply `STALE` under the same >1h rule. The historical regression F-006 must be interpreted as guarding against reintroducing a 6h-vs-1h inconsistency, not as authorizing a 6-hour freshness threshold.
+The user explicitly corrected the historical ambiguity on 2026-08-31:
+- `<= 60 minutes` after candle close = `FRESH`.
+- `> 60 minutes` after candle close = `STALE`.
+- There is no special 6-hour freshness threshold.
+- A signal that is 6 hours old is simply STALE.
+
+The Telegram screenshot supplied by the user shows `STALE (1 hr 26 min ago)` and the footer `FRESH = Closed <=1h ago / STALE = Closed >1h ago`, providing direct historical evidence for this boundary.
 
 ## Open decisions
 
 | ID | Status | Decision required | Current evidence | Blocks |
 |---|---|---|---|---|
 | OD-001 | CONDITIONALLY APPROVED | TrendPulse historical formula baseline | User approved source-derived formula evidence as canonical reconstruction baseline | Phase 0 until conflicts resolved |
-| OD-002 | OPEN | TrendPulse entry / SL / TP | Not established by supplied evidence | Phase 0 / Phase 4 |
-| OD-003 | APPROVED | TrendPulse freshness | User explicitly approved 1-hour FRESH/STALE boundary; no special 6-hour rule | Phase 0 / Phase 4 |
-| OD-004 | OPEN | TrendPulse genuinely-new-signal and repeat/dedup behavior, including new-message behavior | Not established by supplied evidence | Phase 0 / Phase 4 / Phase 6 |
-| OD-005 | OPEN | TrendPulse missing-data fail-safe contract | Must never fabricate or assume missing values; exact behavior still needs freezing | Phase 0 / Phase 4 |
+| OD-002 | OPEN | TrendPulse entry / SL / TP | User will supply TrendPulse code; do not infer from isolated historical trade examples | Phase 0 / Phase 4 |
+| OD-003 | APPROVED | TrendPulse freshness | User explicitly locked <=60m FRESH, >60m STALE; no 6h state | Phase 4 |
+| OD-004 | OPEN | TrendPulse genuinely-new-signal and repeat/dedup behavior, including new-message behavior | Not established by supplied evidence; requires TrendPulse code/evidence | Phase 0 / Phase 4 / Phase 6 |
+| OD-005 | OPEN | TrendPulse missing-data fail-safe contract | Must never fabricate or assume missing values; exact behavior still needs freezing from TrendPulse code | Phase 0 / Phase 4 |
 | OD-006 | OPEN | TrendPulse market/timeframe universe | Historical evidence constrains the implementation but does not establish final approved universe | Phase 0 / Phase 4 |
 | OD-007 | OPEN | Exact approved Telegram copy for all registry IDs | User will provide exact messages as evidence; no inference permitted | Phase 0 / Phase 6 |
 | OD-008 | OPEN | Final market-data provider | User requested research based on reliability, historical coverage, API/accessibility, latency, cost | Phase 0 / Phase 2 |
@@ -50,13 +53,16 @@ A 6-hour-old signal is therefore simply `STALE` under the same >1h rule. The his
 - Strict two-sided Sweep requirement.
 - Equality is not a break.
 - Exact BUY/SELL/NEUTRAL/NO_SIGNAL classification rules from the supplied Sweep V2 specification.
-- Sweep freshness <=60m FRESH, >60m STALE.
+- Freshness <=60m FRESH, >60m STALE.
 - Paper-trade SL/TP rules from the supplied paper-trading/locked rules.
 - Dashboard cannot calculate business truth.
 - Backtest uses canonical strategy engines.
 - Approved Telegram messages immutable after approval.
 - CI read-only; no source or production mutation.
 - Live broker execution disabled initially; paper trading enabled.
+
+## Phase-order correction
+A Phase 1 branch was temporarily created while executing the user's instruction to build non-TrendPulse work. The governing project rule requires Phase N to PASS before Phase N+1. Therefore that Phase 1 work is not authorized for merge and must not be treated as a phase pass. Phase 0 remains the active phase until its gate is satisfied.
 
 ## Required decision record format
 ID, Date, Status, Requirement, Context, Options, Decision, Rationale, Affected specs/tests/code, Approval evidence.
