@@ -21,11 +21,19 @@
 11. freshness at 59m → FRESH
 12. freshness at 60m → FRESH
 13. freshness at 61m → STALE
-14. 6h-old signal → STALE, never FRESH
+14. 6h-old signal → STALE under the same >1h rule; no special 6h threshold/state
 15. candle boundary mismatch → warning
 16. reference/data mismatch → structured warning
 17. provider symbol mapping does not leak into display name
 18. unrelated FVG/filter data cannot alter Sweep result
+
+## TrendPulse freshness regression
+The canonical freshness rule approved for TrendPulse is the same one-hour boundary evidenced by the supplied Telegram screenshot:
+- closed <= 1 hour ago → FRESH
+- closed > 1 hour ago → STALE
+- there is no separate 6-hour freshness threshold or state
+
+Tests must cover 59m, exactly 60m, 61m, and substantially older signals including 6h. The 6h case exists only to prevent regression to a 6-hour interpretation; it must remain STALE, not receive a special classification.
 
 ## Permanent regression mapping
 - F-001: 4H/1H confusion
@@ -33,7 +41,7 @@
 - F-003: equality counted as break
 - F-004: open candle closed
 - F-005: boundary mismatch
-- F-006: 6h vs 1h freshness
+- F-006: 6h vs 1h freshness; regression must enforce the approved 1h boundary and reject special 6h logic
 - F-007/F-008: monkey-patching/source injection
 - F-009: duplicate strategy implementations
 - F-010: live/backtest divergence
