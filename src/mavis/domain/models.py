@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Signal(StrEnum):
@@ -61,13 +61,17 @@ class Candle(BaseModel):
             raise ValueError("candle datetime must be timezone-aware")
         return value
 
-    @field_validator("high")
-    @classmethod
-    def high_not_below_low(cls, value: Decimal, info: Any) -> Decimal:
-        low = info.data.get("low")
-        if low is not None and value < low:
+    @model_validator(mode="after")
+    def validate_ohlc(self) -> "Candle":
+        if self.high < self.low:
             raise ValueError("high cannot be below low")
-        return value
+        if self.open < self.low or self.open > self.high:
+            raise ValueError("open must be within candle range")
+        if self.close < self.low or self.close > self.high:
+            raise ValueError("close must be within candle range")
+        if self.end <= self.start:
+            raise ValueError("candle end must be after start")
+        return self
 
 
 class StrategyInput(BaseModel):
