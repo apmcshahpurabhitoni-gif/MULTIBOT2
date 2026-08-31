@@ -12,18 +12,15 @@ IN PROGRESS — NOT PASSED.
 ## Objective
 Freeze product/architecture/test scope without implementing future phases.
 
-## Requirements
-See `docs/REQUIREMENTS_MATRIX.md`.
-
 ## Current decisions
 - TrendPulse historical formula baseline: conditionally approved from source-derived evidence.
 - TrendPulse freshness: explicitly locked by user to <=60m FRESH and >60m STALE; no 6h threshold.
 - TrendPulse code: user will supply later; do not implement or infer it now.
 - Telegram exact approved copy: awaiting user evidence; do not fabricate.
-- Provider: research required.
-- NSE 15-stock universe: objective research required; historical list is evidence only.
+- Provider: research completed at decision-support level; final approval remains open until recorded.
+- NSE 15-stock universe: objective research completed at decision-support level; final approval remains open until recorded.
 - Risk sizing/fees/slippage: intentionally undefined until canonical strategy rules are established.
-- Hosting/runtime: research required.
+- Hosting/runtime: research completed at decision-support level; final approval remains open until recorded.
 
 ## Phase-order correction
 A temporary Phase 1 branch/PR was created while acting on the instruction to build non-TrendPulse work. The governing build plan requires Phase N to PASS before Phase N+1. The Phase 1 branch is therefore not authorized for merge and Phase 1 is not considered started/passed. The work remains isolated from `main` and will not be merged until Phase 0 passes.
@@ -33,16 +30,16 @@ Phase 0 has documentation/test-design evidence. No Phase 0 pass is claimed becau
 
 ## Open blockers
 - Exact approved Telegram copy.
-- Provider selection.
-- Final objective 15-stock list.
-- Hosting/runtime decision.
+- Final provider approval.
+- Final objective 15-stock approval.
+- Final hosting/runtime approval.
 - Any remaining TrendPulse conflicts not resolved by user-provided code.
 
 ## Regression
-F-001 through F-033 are recorded in the regression plan. F-006 is now explicitly protected as the 1-hour TrendPulse freshness boundary.
+F-001 through F-033 are recorded in the regression plan. F-006 is explicitly protected as the 1-hour TrendPulse freshness boundary.
 
 ## Gate decision
 NOT PASSED. Do not start or merge Phase 1 until Phase 0 is explicitly passed.
 
 ## Next permitted action
-Complete Phase 0 research/evidence and resolve remaining blockers, then execute the formal Phase 0 gate.
+Complete Phase 0 evidence/research and resolve remaining blockers, then execute the formal Phase 0 gate.
