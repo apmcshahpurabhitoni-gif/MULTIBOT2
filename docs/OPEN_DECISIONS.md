@@ -16,53 +16,99 @@ Approved baseline evidence includes:
 - Bullish branch: 4H close > 4H EMA50; previous MACD <= previous signal; current MACD > current signal; 1H RSI > 50 and < 80; 1H close > 1H EMA20.
 - Bearish branch: 4H close < 4H EMA50; previous MACD >= previous signal; current MACD < current signal; 1H RSI < 50 and > 20; 1H close < 1H EMA20.
 
-This approval does NOT silently approve values that the evidence does not establish. Entry, SL, TP, freshness, repeat/dedup behavior, missing-data behavior, market universe, and any other unresolved conflicts must be reconstructed from supplied evidence or explicitly decided; they must not be guessed.
-
 ## User-locked TrendPulse freshness
 
-The user explicitly corrected the historical ambiguity on 2026-08-31:
 - `<= 60 minutes` after candle close = `FRESH`.
 - `> 60 minutes` after candle close = `STALE`.
 - There is no special 6-hour freshness threshold.
 - A signal that is 6 hours old is simply STALE.
 
-The Telegram screenshot supplied by the user shows `STALE (1 hr 26 min ago)` and the footer `FRESH = Closed <=1h ago / STALE = Closed >1h ago`, providing direct historical evidence for this boundary.
+## Research decisions
 
-## Open decisions
+### OD-008 — Market data provider stack
+Status: **RECOMMENDED — final approval pending TrendPulse code/market-universe confirmation**.
 
-| ID | Status | Decision required | Current evidence | Blocks |
-|---|---|---|---|---|
-| OD-001 | CONDITIONALLY APPROVED | TrendPulse historical formula baseline | User approved source-derived formula evidence as canonical reconstruction baseline | Phase 0 until conflicts resolved |
-| OD-002 | OPEN | TrendPulse entry / SL / TP | User will supply TrendPulse code; do not infer from isolated historical trade examples | Phase 0 / Phase 4 |
-| OD-003 | APPROVED | TrendPulse freshness | User explicitly locked <=60m FRESH, >60m STALE; no 6h state | Phase 4 |
-| OD-004 | OPEN | TrendPulse genuinely-new-signal and repeat/dedup behavior, including new-message behavior | Not established by supplied evidence; requires TrendPulse code/evidence | Phase 0 / Phase 4 / Phase 6 |
-| OD-005 | OPEN | TrendPulse missing-data fail-safe contract | Must never fabricate or assume missing values; exact behavior still needs freezing from TrendPulse code | Phase 0 / Phase 4 |
-| OD-006 | OPEN | TrendPulse market/timeframe universe | Historical evidence constrains the implementation but does not establish final approved universe | Phase 0 / Phase 4 |
-| OD-007 | OPEN | Exact approved Telegram copy for all registry IDs | User will provide exact messages as evidence; no inference permitted | Phase 0 / Phase 6 |
-| OD-008 | OPEN | Final market-data provider | User requested research based on reliability, historical coverage, API/accessibility, latency, cost | Phase 0 / Phase 2 |
-| OD-009 | OPEN | Final NSE 15-stock list | User requested objective research; historical list is evidence only, not approval | Phase 0 / product scope |
-| OD-010 | OPEN | Account risk / position sizing | User explicitly leaves undefined until canonical strategy rules are established | Phase 7 |
-| OD-011 | OPEN | Fees / slippage | User explicitly leaves undefined until canonical strategy rules are established | Phase 7 |
-| OD-012 | OPEN | Hosting / runtime | User requested research based on reliability, uptime, deployment simplicity, monitoring, cost, workload | Phase 0 / Phase 10 |
+Recommendation: use a provider stack rather than forcing one vendor to cover incompatible requirements:
 
-## Locked and therefore not open
+1. **DhanHQ for NSE/Indian market data** — its official API provides intraday historical candles at 1, 5, 15, 25 and 60-minute intervals for the last five years for active instruments, across exchanges/segments. Its API documentation also publishes explicit rate limits and authentication. Data APIs are a paid add-on; Dhan currently advertises ₹499 for real-time market feed + historical data. This is the strongest fit found for NSE 1H historical/backtest coverage. citeturn1search3turn1search6turn1search8
+
+2. **Twelve Data for XAU/USD / global instruments where required** — its catalog explicitly exposes XAU/USD commodity data and 1h intervals, while its NSE catalog covers Indian equities. However, the NSE page currently identifies exchange data as EOD, so it should not be used as the sole live NSE provider. citeturn8search10turn8search14turn8search0
+
+Rejected as sole provider for this project:
+- Upstox: excellent API surface and V3 supports 1-hour candles, but the historical V2 documentation clearly documents 30-minute as the highest sub-hour interval and one-year availability; the required long-history behavior is less explicit than Dhan. citeturn0search3turn0search2
+- Zerodha Kite: strong 60-minute historical API and mature instrument model, but historical intraday retrieval is constrained per request and the provider is tied to Zerodha account/API access. citeturn2search0turn2search2
+- Alpha Vantage: strong global intraday depth and 60-minute interval support, but its premium intraday entitlement is not a clean primary fit for live Indian NSE execution/data. citeturn7search0
+
+Decision remains conditional until the user supplies TrendPulse code and its exact market universe, because the code determines whether XAU/USD is actually part of the required live market set.
+
+### OD-009 — NSE 15-stock universe
+Status: **RECOMMENDED — final approval pending**.
+
+Objective rule: select the top 15 Nifty 50 constituents by free-float index weight from the latest complete constituent snapshot available to the research pass. This is reproducible, liquid, large-cap, and avoids arbitrary historical preferences. NSE Indices states that Nifty 50 is free-float-market-cap weighted and its constituent eligibility includes an average impact cost of 0.50% or less for 90% of observations for a ₹100M basket plus F&O eligibility. citeturn4view0turn5search22
+
+Latest complete 15-name snapshot located in the official Nifty 50 research material (27-Feb-2026):
+1. HDFC Bank
+2. ICICI Bank
+3. Reliance Industries
+4. Bharti Airtel
+5. Larsen & Toubro
+6. State Bank of India
+7. Infosys
+8. Axis Bank
+9. Kotak Mahindra Bank
+10. Mahindra & Mahindra
+11. ITC
+12. Tata Consultancy Services
+13. Bajaj Finance
+14. Hindustan Unilever
+15. Maruti Suzuki India
+
+The official July 31, 2026 Nifty 50 factsheet confirms the first ten remain among the highest-weight constituents, although their weights/order have moved. citeturn4view0
+
+This is a proposed objective universe, not yet an approved immutable list. The list should be re-evaluated at each Nifty 50 semi-annual review rather than silently drifting.
+
+### OD-012 — Hosting/runtime
+Status: **RECOMMENDED — final approval pending**.
+
+Recommendation:
+- **Render** for application/web service + background worker/cron workload.
+- **Supabase Postgres** for the canonical database.
+
+Reasoning: Render explicitly supports web services, private services, background workers and cron jobs; its health checks can automatically detect unhealthy instances and restart them for web/private services. Its current pricing model offers production-oriented service plans and a $25/month Pro workspace tier. citeturn3search2turn3search6turn3search11turn3search4
+
+Supabase Pro is currently $25/month, includes daily backups with seven-day retention, and provides database/API monitoring plus a Prometheus-compatible metrics API. The Free plan pauses inactive projects, so production should use Pro rather than Free. citeturn3search0turn3search12turn3search14
+
+This separation keeps compute/workers independently deployable from durable Postgres and gives the later Phase 9 observability work clear health/metrics surfaces.
+
+## Remaining open decisions
+
+| ID | Status | Decision required | Blocks |
+|---|---|---|---|
+| OD-001 | CONDITIONALLY APPROVED | TrendPulse baseline; unresolved trade/data rules await code | Phase 0 / Phase 4 |
+| OD-002 | OPEN | TrendPulse entry / SL / TP | Phase 0 / Phase 4 |
+| OD-003 | APPROVED | TrendPulse freshness <=60m FRESH, >60m STALE | Phase 4 |
+| OD-004 | OPEN | TrendPulse genuinely-new-signal/repeat/dedup behavior | Phase 0 / Phase 4 / Phase 6 |
+| OD-005 | OPEN | TrendPulse missing-data fail-safe | Phase 0 / Phase 4 |
+| OD-006 | OPEN | TrendPulse market/timeframe universe | Phase 0 / Phase 4 |
+| OD-007 | OPEN | Exact approved Telegram copy | Phase 0 / Phase 6 |
+| OD-008 | RECOMMENDED | DhanHQ for NSE + Twelve Data where XAU/global data is required | Phase 0 / Phase 2 |
+| OD-009 | RECOMMENDED | Top 15 Nifty 50 by free-float weight | Phase 0 / product scope |
+| OD-010 | OPEN | Account risk / position sizing | Phase 7 |
+| OD-011 | OPEN | Fees / slippage | Phase 7 |
+| OD-012 | RECOMMENDED | Render + Supabase | Phase 0 / Phase 10 |
+
+## Locked
 - Sweep timeframe for NIFTY/BANK NIFTY: 1H.
 - Sweep starts: 09:15, 10:15, 11:15, 12:15, 13:15, 14:15 IST.
 - No normal 15:15–16:15 Sweep candle.
 - Closed candle only.
 - Strict two-sided Sweep requirement.
 - Equality is not a break.
-- Exact BUY/SELL/NEUTRAL/NO_SIGNAL classification rules from the supplied Sweep V2 specification.
+- Exact BUY/SELL/NEUTRAL/NO_SIGNAL classification rules from supplied Sweep V2.
 - Freshness <=60m FRESH, >60m STALE.
-- Paper-trade SL/TP rules from the supplied paper-trading/locked rules.
+- Paper-trade SL/TP rules from supplied paper-trading/locked rules.
 - Dashboard cannot calculate business truth.
 - Backtest uses canonical strategy engines.
 - Approved Telegram messages immutable after approval.
 - CI read-only; no source or production mutation.
 - Live broker execution disabled initially; paper trading enabled.
-
-## Phase-order correction
-A Phase 1 branch was temporarily created while executing the user's instruction to build non-TrendPulse work. The governing project rule requires Phase N to PASS before Phase N+1. Therefore that Phase 1 work is not authorized for merge and must not be treated as a phase pass. Phase 0 remains the active phase until its gate is satisfied.
-
-## Required decision record format
-ID, Date, Status, Requirement, Context, Options, Decision, Rationale, Affected specs/tests/code, Approval evidence.
