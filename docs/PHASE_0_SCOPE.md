@@ -33,5 +33,8 @@ NIFTY/BANK NIFTY Sweep is 1H with eligible starts 09:15, 10:15, 11:15, 12:15, 13
 ## TrendPulse
 The user approved the historical formula evidence as the canonical baseline but instructed that the TrendPulse code will be supplied later. Therefore TrendPulse implementation is deferred. The user explicitly locked freshness to <=60 minutes FRESH and >60 minutes STALE; there is no special 6-hour threshold.
 
+## Research targets
+Provider research must evaluate reliability, historical coverage, API/accessibility, latency, cost, and practical NSE/1H/closed-candle fit. Hosting research must evaluate reliability, uptime, deployment simplicity, monitoring, cost, and workload fit. The 15-stock universe must be established by objective, reproducible criteria rather than historical preference.
+
 ## Phase 0 gate
 PASS only when the authoritative decisions/evidence and required research are recorded, no critical ambiguity remains for the phase's required scope, the exact Telegram copy is frozen from authoritative user evidence, and the formal executable verification/CI gate is completed. A Phase 1 branch created before this PASS is not merge-authorized.
