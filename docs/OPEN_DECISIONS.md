@@ -2,16 +2,38 @@
 
 No unresolved item is to be answered by invention. Each decision requires an explicit approval record before implementation depends on it.
 
+## User-approved TrendPulse reconstruction baseline
+
+On 2026-08-31 the user explicitly approved the historical TrendPulse evidence as the canonical reconstruction baseline, with the condition that unresolved conflicts must be resolved before implementation.
+
+Approved baseline evidence includes:
+- 1H input data; 4H data derived from 1H data.
+- Minimum 50 1H rows and minimum 15 4H rows.
+- 4H EMA50 and 4H ATR(14).
+- ATR percentage `(ATR / Close) * 100`; historical implementation rejects below 0.2%.
+- 1H EMA20, RSI(14), 1H ATR(14), MACD(12,26,9).
+- Closed 1H/4H values with prior/current MACD crossover comparison.
+- Bullish branch: 4H close > 4H EMA50; previous MACD <= previous signal; current MACD > current signal; 1H RSI > 50 and < 80; 1H close > 1H EMA20.
+- Bearish branch: 4H close < 4H EMA50; previous MACD >= previous signal; current MACD < current signal; 1H RSI < 50 and > 20; 1H close < 1H EMA20.
+
+This approval does NOT silently approve values that the evidence does not establish. Entry, SL, TP, freshness, repeat/dedup behavior, missing-data behavior, market universe, and any other unresolved conflicts must be reconstructed from supplied evidence or explicitly decided; they must not be guessed.
+
+## Open decisions
+
 | ID | Status | Decision required | Current evidence | Blocks |
 |---|---|---|---|---|
-| OD-001 | OPEN | Exact TrendPulse formula | Recovered specs state the approved formula/parameters are not reliably preserved; must recover authoritative definition | Phase 4 |
-| OD-002 | OPEN | TrendPulse parameters/timeframes/signals/trade rules/freshness/repetition/data behavior | Same gap | Phase 4 |
-| OD-003 | OPEN | Exact approved Telegram copy for all registry IDs | Historical verbatim approved copy is not reliably available | Phase 6; Phase 0 freeze completion |
-| OD-004 | OPEN | Final market-data provider | Must evaluate free limits, history, reliability, boundaries, rate limits, symbols, terms | Phase 2 |
-| OD-005 | OPEN | Exact NSE 15-stock list | Not preserved in recovered material | Product scope dependent |
-| OD-006 | OPEN | Account risk / position sizing | Must not be invented | Phase 7 |
-| OD-007 | OPEN | Fees / slippage | Must not be invented | Phase 7 |
-| OD-008 | OPEN | Hosting / runtime | Not fixed | Phase 10 |
+| OD-001 | CONDITIONALLY APPROVED | TrendPulse historical formula baseline | User approved source-derived formula evidence as canonical reconstruction baseline | Phase 0 until conflicts resolved |
+| OD-002 | OPEN | TrendPulse entry / SL / TP | Not established by supplied evidence | Phase 0 / Phase 4 |
+| OD-003 | OPEN | TrendPulse exact freshness, including 6-hour stale issue | Not established by supplied evidence | Phase 0 / Phase 4 |
+| OD-004 | OPEN | TrendPulse genuinely-new-signal and repeat/dedup behavior, including new-message behavior | Not established by supplied evidence | Phase 0 / Phase 4 / Phase 6 |
+| OD-005 | OPEN | TrendPulse missing-data fail-safe contract | Must never fabricate or assume missing values; exact behavior still needs freezing | Phase 0 / Phase 4 |
+| OD-006 | OPEN | TrendPulse market/timeframe universe | Historical evidence constrains the implementation but does not establish final approved universe | Phase 0 / Phase 4 |
+| OD-007 | OPEN | Exact approved Telegram copy for all registry IDs | User will provide exact messages as evidence; no inference permitted | Phase 0 / Phase 6 |
+| OD-008 | OPEN | Final market-data provider | User requested research based on reliability, historical coverage, API/accessibility, latency, cost | Phase 0 / Phase 2 |
+| OD-009 | OPEN | Final NSE 15-stock list | User requested objective research; historical list is evidence only, not approval | Phase 0 / product scope |
+| OD-010 | OPEN | Account risk / position sizing | User explicitly leaves undefined until canonical strategy rules are established | Phase 7 |
+| OD-011 | OPEN | Fees / slippage | User explicitly leaves undefined until canonical strategy rules are established | Phase 7 |
+| OD-012 | OPEN | Hosting / runtime | User requested research based on reliability, uptime, deployment simplicity, monitoring, cost, workload | Phase 0 / Phase 10 |
 
 ## Locked and therefore not open
 - Sweep timeframe for NIFTY/BANK NIFTY: 1H.
