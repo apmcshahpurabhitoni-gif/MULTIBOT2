@@ -6,27 +6,27 @@ Phase 0 — Specification Freeze
 ## Status
 IN PROGRESS — NOT PASSED.
 
-## Current source of truth
+## Canonical branch
 `main`
 
-## Evidence completed
-- Requirements matrix and architecture/test baselines.
-- TrendPulse historical baseline approved by user.
-- TrendPulse freshness locked to <=60m FRESH and >60m STALE.
-- Provider research recommendation.
-- Objective NSE 15-stock universe recommendation.
-- Hosting/runtime recommendation.
+## Completed evidence
+- Requirements, architecture, contracts, tests and CI controls documented.
+- Historical TrendPulse baseline approved conditionally by user.
+- TrendPulse freshness explicitly locked to <=60m FRESH / >60m STALE.
+- Provider research recommendation documented.
+- Objective NSE 15-stock recommendation documented.
+- Hosting recommendation documented.
 
 ## Remaining blockers
-- Exact Telegram approved copy from user evidence.
-- TrendPulse code from user, required before implementing or freezing the remaining strategy-specific rules.
-- Final confirmation of conditional provider/stock/hosting choices after exact market universe is known.
+- Exact Telegram messages from user.
+- TrendPulse code from user to resolve remaining strategy-specific rules without guessing.
+- Final conditional decisions after those inputs are available.
 
 ## Phase-order correction
-Temporary Phase 1 implementation was created on an isolated branch but is not authorized for merge. Phase 0 must pass first.
+A temporary Phase 1 branch/PR was created while following the instruction to build non-TrendPulse work. It is isolated and not merge-authorized because Phase 0 has not passed. No Phase 1 pass is claimed.
 
 ## Gate
 NOT PASSED.
 
 ## Next permitted action
-User supplies Telegram messages and TrendPulse code/evidence; then Phase 0 is completed and formally gated before Phase 1 is started.
+Receive the remaining user evidence, complete Phase 0, run the formal gate, and only then start Phase 1.
