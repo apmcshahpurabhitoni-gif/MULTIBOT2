@@ -6,6 +6,9 @@ IN PROGRESS — NOT PASSED.
 ## Branch
 `phase/1-foundation`
 
+## PR
+`#1` — Phase 1: Foundation
+
 ## Objective
 Implement only Foundation: configuration, typed domain contracts, timezone/freshness primitives, errors, logging, serialization, and executable tests.
 
@@ -23,8 +26,8 @@ TrendPulse implementation is deferred until the user supplies the authoritative 
 - Executable pytest coverage.
 - Read-only GitHub Actions CI workflow.
 
-## Verification
-A local reconstruction of the foundation suite initially exposed an OHLC validator ordering defect. The repository implementation was corrected to validate the complete Candle model after parsing. The local reconstructed suite then needs to be rerun; GitHub CI remains the authoritative repository execution evidence.
+## Verification history
+A local reconstruction of the foundation suite initially exposed an OHLC validator ordering defect. The repository implementation was corrected to validate the complete Candle model after parsing. The first reconstructed run was 8 passed / 1 failed; the failure was the validator-order defect. The corrected repository state now requires a fresh executable run in CI.
 
 ## Tests
 `tests/test_foundation.py`
@@ -41,16 +44,13 @@ Coverage includes:
 - immutable domain contract
 
 ## CI
-A GitHub Actions workflow exists and is configured with `contents: read`. CI completion and pass must be verified before this phase can pass.
+The repository workflow uses `permissions: contents: read`, installs the package with test dependencies, runs pytest, and performs compile validation. CI must actually complete and pass before this phase can pass.
 
-## Known blockers to Phase 1 PASS
-- CI must actually complete and pass.
-- Final diff must be reviewed.
-- Full required regression suite must be rerun after final fixes.
-- Phase gate evidence must be recorded.
+## Gate status
+NOT PASSED. Local execution is constrained by the environment's inability to reach GitHub, and no completed GitHub CI run has yet been verified for the current head. No merge is permitted.
 
 ## TrendPulse
-Deferred by explicit user instruction. This is not a Phase 1 failure; it is a deliberate scope boundary. TrendPulse remains a Phase 4 dependency and must use user-supplied authoritative code when provided.
+Deferred by explicit user instruction. This is a deliberate scope boundary. TrendPulse remains a Phase 4 dependency and must use user-supplied authoritative code when provided.
 
 ## Next permitted action
-Remain in Phase 1 until its gate is evidenced as passed. Do not start Phase 2 merely because the implementation appears complete.
+Remain in Phase 1 until executable CI and gate evidence are complete. Do not start Phase 2 merely because the implementation appears complete.
