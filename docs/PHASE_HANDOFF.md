@@ -12,15 +12,18 @@ IN PROGRESS — NOT PASSED.
 ## Objective
 Freeze product/architecture/test scope without implementing future phases.
 
-## Research completed
-- Provider research: recommended DhanHQ for NSE/Indian 1H historical/live data, with Twelve Data as a secondary/global/XAU provider if the TrendPulse code confirms XAU/USD is required.
-- NSE universe research: recommended top 15 Nifty 50 constituents by free-float index weight from the latest complete official 15-name snapshot located.
-- Hosting research: recommended Render for app/worker/cron compute and Supabase Pro for Postgres/monitoring/backups.
+## Evidence completed
+- Requirements matrix and architecture/test baselines recorded.
+- TrendPulse historical baseline approved by user.
+- TrendPulse freshness locked to <=60m FRESH and >60m STALE; no 6h threshold.
+- Provider research completed with a conditional DhanHQ + Twelve Data recommendation.
+- Stock-universe research completed with a reproducible top-15-by-Nifty50-weight recommendation.
+- Hosting research completed with a Render + Supabase recommendation.
 
 ## Remaining blockers
-- User's TrendPulse code is still required before TrendPulse implementation and final market-universe freeze.
-- Exact approved Telegram messages are still required; no historical wording will be invented.
-- Final approval of the provider stack, stock universe and hosting recommendation is still to be recorded after the remaining evidence is complete.
+1. Exact Telegram approved copy from user evidence.
+2. TrendPulse code from user, required to resolve remaining strategy-specific rules without guessing.
+3. Final confirmation of provider stack, stock universe and hosting after those requirements are fully known.
 
 ## Phase-order correction
 A temporary Phase 1 branch/PR was created during execution, but the governing rule requires Phase 0 PASS before Phase 1. It is not authorized for merge and must not be treated as Phase 1 progress. `main` remains the source of truth for Phase 0.
@@ -29,4 +32,4 @@ A temporary Phase 1 branch/PR was created during execution, but the governing ru
 NOT PASSED. No Phase 1 merge or implementation is authorized until the Phase 0 gate passes.
 
 ## Next permitted action
-Receive the exact Telegram messages and TrendPulse code from the user, finalize the remaining Phase 0 decisions, run the Phase 0 gate, then create Phase 1.
+Receive exact Telegram messages and TrendPulse code, finalize Phase 0, execute the formal gate, then create Phase 1.
