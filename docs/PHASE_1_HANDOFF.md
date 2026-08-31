@@ -23,10 +23,13 @@ TrendPulse implementation is deferred until the user supplies the authoritative 
 - Executable pytest coverage.
 - Read-only GitHub Actions CI workflow.
 
+## Verification
+A local reconstruction of the foundation suite initially exposed an OHLC validator ordering defect. The repository implementation was corrected to validate the complete Candle model after parsing. The local reconstructed suite then needs to be rerun; GitHub CI remains the authoritative repository execution evidence.
+
 ## Tests
 `tests/test_foundation.py`
 
-Expected coverage includes:
+Coverage includes:
 - naive datetime rejection
 - exact 60-minute freshness boundary
 - six-hour state remains STALE, with no special six-hour threshold
