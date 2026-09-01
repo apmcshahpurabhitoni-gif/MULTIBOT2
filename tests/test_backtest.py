@@ -7,7 +7,6 @@ def frame():
 def test_backtest_uses_selected_account_limit_per_day():
     def evaluator(previous,current):return StrategySignal("Test","BUY",current.name,"TEST",float(current.close),1.0)
     result=run_signal_backtest(frame(),evaluator,strategy_name="Test",account="ny_session")
-    # The limit is per calendar day, not a lifetime limit: 3 on each of two dates.
     assert result.trades_taken==6 and result.planned_risk==12000
 
 def test_backtest_rejects_unknown_account():
