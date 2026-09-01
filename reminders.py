@@ -1,6 +1,6 @@
-"""Independent one-hour reminder worker using the same approved signal template."""
+"""Independent one-hour reminder worker using the original approved signal message type."""
 from __future__ import annotations
-import threading
+import json,threading
 import pandas as pd
 from config import IST_TIMEZONE
 from db import DatabaseManager
@@ -16,9 +16,7 @@ class ReminderService:
             text=row.get("message_text") or ""
             if not text:continue
             try:
-                # Preserve the original approved message body/type; only prepend the reminder marker.
-                message_type=str((row.get("metadata") or "")).split("strategy")[-1] if False else "REMINDER"
-                reminder=TelegramMessage("MSG-REMINDER-V1", "🔔 REMINDER\n"+text);send_message(reminder,self._config());self.database.mark_reminder_sent(row["signal_key"],current.isoformat());sent+=1
+                metadata=json.loads(row.get("metadata") or "{}");message_type=str(metadata.get("message_type") or "MSG-REMINDER-V1");reminder=TelegramMessage(message_type,"🔔 REMINDER\n"+text);send_message(reminder,self._config());self.database.mark_reminder_sent(row["signal_key"],current.isoformat());sent+=1
             except Exception:continue
         return sent
     def start(self,interval_seconds=30):
