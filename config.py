@@ -69,9 +69,11 @@ ACCOUNT_TRADE_LIMITS: dict[str, int] = {
     "sweep_4h": 3,
 }
 
-# Retained as the canonical single-trade risk amount. Daily risk
-# is evaluated per account using ACCOUNT_TRADE_LIMITS.
+# Legacy compatibility value retained for modules/tests that use the
+# former single-limit configuration. Actual runtime enforcement uses
+# ACCOUNT_TRADE_LIMITS per logical account.
 MAX_TRADES_PER_DAY = 3
+MAX_DAILY_PLANNED_RISK_INR = RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY
 
 LEVERAGE = 1.0
 
@@ -218,7 +220,12 @@ def validate_configuration() -> None:
 
     if MAX_TRADES_PER_DAY <= 0:
         raise ValueError(
-            "Maximum trades per day must be positive"
+            "Legacy maximum trades per day must be positive"
+        )
+
+    if MAX_DAILY_PLANNED_RISK_INR != RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY:
+        raise ValueError(
+            "Legacy daily risk configuration is inconsistent"
         )
 
     if set(ACCOUNT_TRADE_LIMITS) != set(ACCOUNT_NAMES):
