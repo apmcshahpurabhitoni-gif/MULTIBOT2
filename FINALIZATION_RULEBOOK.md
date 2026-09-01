@@ -18,6 +18,7 @@ This is the mandatory release contract. A green test suite alone never means fin
 - Maximum two sends: initial + one reminder; never a third.
 - Sweep V2: strict two-sided sweep followed by final-close classification.
 - Sweep uses market entry, sweep extreme SL, and 1:2 target.
+- MULTIBOT2 has no pending-sweep persistence or pending-sweep workflow.
 
 ## Candle invariants
 - All timestamps are timezone-aware IST.
@@ -34,13 +35,24 @@ This is the mandatory release contract. A green test suite alone never means fin
 No strategy may bypass the pipeline. Compatibility APIs may not silently turn valid signals into `NO_SIGNAL`. Scanning must not consume duplicate allowance until acceptance/send.
 
 ## Persistence
-Balances, daily counters, active trades, closed history, pending sweeps, and signal send counts survive restart. There is one authoritative state implementation. State transitions are idempotent.
+- Balances and daily counters survive restart.
+- Active trades and closed trade history survive restart.
+- Signal send counts and reminder state survive restart.
+- Supabase is the production persistence backend configured through `SUPABASE_URL` and `SUPABASE_KEY`.
+- MULTIBOT2 does not create, restore, or depend on `pending_sweeps`.
+- There is one authoritative state implementation. State transitions are idempotent.
 
 ## Telegram
 BUY uses green direction icon; SELL uses red. Freshness icon is independent: `✅` fresh and `⚠️` stale. User-facing names do not leak provider tickers when mappings exist. Required signal fields include timeframe, candle close, age, action and risk. Stale signals never open trades. Reminder is one hour after initial send and cannot produce a third message.
 
 ## Dashboard/API
 Dashboard is presentation over authoritative state. Rounding never changes execution. Health reflects actual runtime. Backtest endpoints use current APIs only.
+
+## Deployment / uptime
+- Render runs the web service with `pip install -e .` and `python main.py`.
+- Render supplies Telegram and Supabase credentials through environment variables.
+- `/ping` is a lightweight health/keep-alive endpoint and must not scan markets or mutate trading state.
+- The existing external cron job may GET `/ping` every 10 minutes to keep the Render free service warm.
 
 ## Final acceptance gates
 Inspect every source file and test. Search for TODO/FIXME/pass placeholders, obsolete API arguments, duplicate implementations, old limits, old freshness, old candle assumptions, dead APIs and undocumented claims. Run full tests, import/syntax checks and CI. Perform clean-start and restart/persistence smoke tests. Any failed gate means NOT FINISHED.
