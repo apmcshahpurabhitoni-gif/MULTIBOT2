@@ -3,10 +3,12 @@ import pytest
 
 from market_data import (
     MarketDataError,
+    build_nse_hourly_candles,
     candles_from_records,
     candle_age_hours,
     normalize_candles,
     validate_symbol,
+    yahoo_symbol,
 )
 
 
@@ -24,6 +26,28 @@ def make_candles():
             "high": [103.0, 104.0],
             "low": [99.0, 100.0],
             "close": [102.0, 103.0],
+        },
+        index=index,
+    )
+
+
+def make_one_hour_of_minutes(
+    start="2026-08-31 09:15:00+05:30",
+):
+    index = pd.date_range(
+        start=start,
+        periods=60,
+        freq="1min",
+    )
+
+    values = range(100, 160)
+
+    return pd.DataFrame(
+        {
+            "open": [float(value) for value in values],
+            "high": [float(value + 1) for value in values],
+            "low": [float(value - 1) for value in values],
+            "close": [float(value + 0.5) for value in values],
         },
         index=index,
     )
@@ -157,7 +181,6 @@ def test_candles_from_records():
     result = candles_from_records(records)
 
     assert len(result) == 2
-
     assert result.index.tz is not None
 
 
@@ -165,7 +188,6 @@ def test_empty_records_return_empty_ist_frame():
     result = candles_from_records([])
 
     assert result.empty
-
     assert result.index.tz is not None
 
 
@@ -194,6 +216,119 @@ def test_validate_symbol_normalizes_symbol():
 def test_empty_symbol_is_rejected():
     with pytest.raises(MarketDataError):
         validate_symbol("")
+
+
+def test_yahoo_symbol_uses_nse_suffix():
+    assert yahoo_symbol("RELIANCE") == "RELIANCE.NS"
+
+
+def test_symbol_outside_fixed_universe_is_rejected():
+    with pytest.raises(MarketDataError):
+        yahoo_symbol("BTC-USD")
+
+
+def test_first_hour_is_0915_to_1014():
+    frame = make_one_hour_of_minutes()
+
+    result = build_nse_hourly_candles(frame)
+
+    assert len(result) == 1
+
+    assert result.index[0] == pd.Timestamp(
+        "2026-08-31 10:15:00+05:30"
+    )
+
+
+def test_first_hour_uses_first_open_and_last_close():
+    frame = make_one_hour_of_minutes()
+
+    result = build_nse_hourly_candles(frame)
+
+    assert result.iloc[0]["open"] == 100.0
+    assert result.iloc[0]["close"] == 159.5
+    assert result.iloc[0]["high"] == 160.0
+    assert result.iloc[0]["low"] == 99.0
+
+
+def test_two_hour_candles_have_1015_boundary():
+    first = make_one_hour_of_minutes(
+        "2026-08-31 09:15:00+05:30"
+    )
+
+    second = make_one_hour_of_minutes(
+        "2026-08-31 10:15:00+05:30"
+    )
+
+    second = second.copy()
+
+    result = build_nse_hourly_candles(
+        pd.concat([first, second])
+    )
+
+    assert len(result) == 2
+
+    assert list(result.index) == [
+        pd.Timestamp(
+            "2026-08-31 10:15:00+05:30"
+        ),
+        pd.Timestamp(
+            "2026-08-31 11:15:00+05:30"
+        ),
+    ]
+
+
+def test_incomplete_hour_is_not_manufactured():
+    frame = make_one_hour_of_minutes()
+
+    frame = frame.iloc[:-1]
+
+    result = build_nse_hourly_candles(frame)
+
+    assert result.empty
+
+
+def test_missing_minute_is_not_manufactured():
+    frame = make_one_hour_of_minutes()
+
+    frame = frame.drop(
+        frame.index[30]
+    )
+
+    result = build_nse_hourly_candles(frame)
+
+    assert result.empty
+
+
+def test_1515_to_1529_does_not_create_extra_hour():
+    frame = make_one_hour_of_minutes(
+        "2026-08-31 14:15:00+05:30"
+    )
+
+    extra_index = pd.date_range(
+        "2026-08-31 15:15:00+05:30",
+        periods=15,
+        freq="1min",
+    )
+
+    extra = pd.DataFrame(
+        {
+            "open": [200.0] * 15,
+            "high": [201.0] * 15,
+            "low": [199.0] * 15,
+            "close": [200.5] * 15,
+        },
+        index=extra_index,
+    )
+
+    result = build_nse_hourly_candles(
+        pd.concat([frame, extra])
+    )
+
+    assert len(result) == 1
+
+    assert result.index[0] == pd.Timestamp(
+        "2026-08-31 15:15:00+05:30"
+    )
 
 
 def test_candle_age_hours():
