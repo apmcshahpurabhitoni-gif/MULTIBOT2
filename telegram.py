@@ -1,20 +1,21 @@
-"""Telegram message and delivery boundary for MULTIBOT2."""
+"""Telegram integration boundary for MULTIBOT2."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Mapping
+from urllib import parse, request
 
 from strategies import StrategySignal
 from trading import PaperTrade
 
 
 class TelegramConfigurationError(RuntimeError):
-    """Raised when Telegram configuration is incomplete."""
+    """Raised when Telegram configuration is missing."""
 
 
 class TelegramTemplateError(RuntimeError):
-    """Raised when an approved message template is unavailable."""
+    """Raised when an approved Telegram template is unavailable."""
 
 
 @dataclass(frozen=True)
@@ -24,16 +25,27 @@ class TelegramConfig:
     bot_token: str
     chat_id: str
 
-    def __post_init__(self) -> None:
-        if not self.bot_token.strip():
+    @classmethod
+    def from_env(cls) -> "TelegramConfig":
+        import os
+
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+        if not token:
             raise TelegramConfigurationError(
-                "Telegram bot token cannot be empty"
+                "TELEGRAM_BOT_TOKEN is not configured"
             )
 
-        if not self.chat_id.strip():
+        if not chat_id:
             raise TelegramConfigurationError(
-                "Telegram chat ID cannot be empty"
+                "TELEGRAM_CHAT_ID is not configured"
             )
+
+        return cls(
+            bot_token=token,
+            chat_id=chat_id,
+        )
 
 
 @dataclass(frozen=True)
@@ -44,38 +56,103 @@ class TelegramMessage:
     text: str
 
 
-# The exact approved production templates must be inserted here
-# only after they have been verified from the approved source.
+# ============================================================
+# APPROVED MESSAGE REGISTRY
+#
+# DO NOT INVENT MESSAGE TEXT HERE.
+#
+# Exact approved wording, emojis and formatting will be inserted
+# only after recovery from the approved source.
+# ============================================================
+
 APPROVED_TEMPLATES: dict[str, str] = {}
 
 
-def build_fields(
+# ============================================================
+# MESSAGE IDENTIFIERS
+# ============================================================
+
+SWEEP_MESSAGE_TYPES = {
+    "BUY": "MSG-SWEEP-BUY-V1",
+    "SELL": "MSG-SWEEP-SELL-V1",
+    "NEUTRAL": "MSG-SWEEP-NEUTRAL-V1",
+}
+
+TRENDPULSE_MESSAGE_TYPES = {
+    "BUY": "MSG-TRENDPULSE-BUY-V1",
+    "SELL": "MSG-TRENDPULSE-SELL-V1",
+    "NEUTRAL": "MSG-TRENDPULSE-NEUTRAL-V1",
+}
+
+
+def signal_message_type(
+    signal: StrategySignal,
+) -> str:
+    """Return the approved template identifier."""
+
+    if signal.strategy == "Sweep V2":
+
+        mapping = SWEEP_MESSAGE_TYPES
+
+    elif signal.strategy == "TrendPulse":
+
+        mapping = TRENDPULSE_MESSAGE_TYPES
+
+    else:
+
+        raise TelegramTemplateError(
+            f"Unsupported strategy: {signal.strategy}"
+        )
+
+    if signal.signal not in mapping:
+
+        raise TelegramTemplateError(
+            f"Signal has no standard message template: "
+            f"{signal.signal}"
+        )
+
+    return mapping[signal.signal]
+
+
+def build_signal_fields(
     signal: StrategySignal,
     *,
-    asset: str | None = None,
-    symbol: str | None = None,
-    market: str | None = None,
-    timeframe: str | None = None,
+    asset: str = "",
+    symbol: str = "",
+    market: str = "NSE",
+    timeframe: str = "1H",
     entry: float | None = None,
     stop_loss: float | None = None,
     take_profit: float | None = None,
-    freshness: str | None = None,
+    freshness: str = "",
 ) -> dict[str, object]:
-    """Build the canonical fields available to Telegram templates."""
+    """Build the canonical fields available to templates."""
 
     return {
         "strategy": signal.strategy,
         "signal": signal.signal,
         "timestamp": signal.timestamp.isoformat(),
         "reason": signal.reason,
-        "asset": asset or "",
-        "symbol": symbol or "",
-        "market": market or "",
-        "timeframe": timeframe or "",
-        "entry": entry if entry is not None else "",
-        "stop_loss": stop_loss if stop_loss is not None else "",
-        "take_profit": take_profit if take_profit is not None else "",
-        "freshness": freshness or "",
+        "asset": asset,
+        "symbol": symbol,
+        "market": market,
+        "timeframe": timeframe,
+        "entry": (
+            entry
+            if entry is not None
+            else ""
+        ),
+        "stop_loss": (
+            stop_loss
+            if stop_loss is not None
+            else ""
+        ),
+        "take_profit": (
+            take_profit
+            if take_profit is not None
+            else ""
+        ),
+        "freshness": freshness,
     }
 
 
@@ -85,22 +162,31 @@ def render_template(
 ) -> TelegramMessage:
     """Render an approved template.
 
-    Fails closed when no approved template exists. This prevents the bot
-    from silently sending fabricated Telegram wording.
+    Fails closed if the approved wording is unavailable.
     """
 
-    template = APPROVED_TEMPLATES.get(message_type)
+    template = APPROVED_TEMPLATES.get(
+        message_type
+    )
 
     if template is None:
+
         raise TelegramTemplateError(
-            f"No approved Telegram template configured: {message_type}"
+            "Approved Telegram template is not "
+            f"configured: {message_type}"
         )
 
     try:
-        text = template.format_map(fields)
+
+        text = template.format_map(
+            fields
+        )
+
     except KeyError as exc:
+
         raise TelegramTemplateError(
-            f"Missing Telegram template field: {exc.args[0]}"
+            "Template requires unavailable field: "
+            f"{exc.args[0]}"
         ) from exc
 
     return TelegramMessage(
@@ -109,63 +195,44 @@ def render_template(
     )
 
 
-def signal_message_type(signal: StrategySignal) -> str:
-    """Map a signal to its template identifier."""
-
-    mapping = {
-        "BUY": "MSG-TRENDPULSE-BUY-V1",
-        "SELL": "MSG-TRENDPULSE-SELL-V1",
-        "NEUTRAL": "MSG-TRENDPULSE-NEUTRAL-V1",
-        "NO_SIGNAL": "MSG-TRENDPULSE-NEUTRAL-V1",
-    }
-
-    if signal.strategy == "Sweep V2":
-        mapping = {
-            "BUY": "MSG-SWEEP-BUY-V1",
-            "SELL": "MSG-SWEEP-SELL-V1",
-            "NEUTRAL": "MSG-SWEEP-NEUTRAL-V1",
-            "NO_SIGNAL": "MSG-SWEEP-NEUTRAL-V1",
-        }
-
-    try:
-        return mapping[signal.signal]
-    except KeyError as exc:
-        raise TelegramTemplateError(
-            f"Unsupported signal type: {signal.signal}"
-        ) from exc
-
-
 def render_signal_message(
     signal: StrategySignal,
     **fields: object,
 ) -> TelegramMessage:
-    """Render the correct approved message for a strategy signal."""
+    """Render a strategy signal using an approved template."""
 
-    message_type = signal_message_type(signal)
+    message_type = signal_message_type(
+        signal
+    )
 
-    template_fields = build_fields(
+    signal_fields = build_signal_fields(
         signal,
         **fields,
     )
 
     return render_template(
         message_type,
-        template_fields,
+        signal_fields,
     )
 
 
-def trade_fields(trade: PaperTrade) -> dict[str, object]:
-    """Return canonical trade fields for an approved template."""
+def build_trade_fields(
+    trade: PaperTrade,
+) -> dict[str, object]:
+    """Return canonical trade fields."""
 
     plan = trade.plan
 
     return {
         "strategy": plan.strategy,
         "side": plan.side,
-        "signal_timestamp": plan.signal_timestamp.isoformat(),
+        "signal_timestamp": (
+            plan.signal_timestamp.isoformat()
+        ),
         "entry": plan.entry,
         "stop_loss": plan.stop_loss,
         "take_profit": plan.take_profit,
+        "risk_per_unit": plan.risk_per_unit,
         "status": trade.status,
         "exit_price": (
             trade.exit_price
@@ -177,5 +244,55 @@ def trade_fields(trade: PaperTrade) -> dict[str, object]:
             if trade.exit_timestamp is not None
             else ""
         ),
-        "exit_reason": trade.exit_reason or "",
+        "exit_reason": (
+            trade.exit_reason
+            or ""
+        ),
     }
+
+
+def send_message(
+    message: TelegramMessage,
+    config: TelegramConfig,
+) -> None:
+    """Send one Telegram message using the Bot API."""
+
+    if not message.text.strip():
+
+        raise TelegramTemplateError(
+            "Cannot send an empty Telegram message"
+        )
+
+    endpoint = (
+        "https://api.telegram.org/bot"
+        f"{config.bot_token}/sendMessage"
+    )
+
+    payload = parse.urlencode(
+        {
+            "chat_id": config.chat_id,
+            "text": message.text,
+        }
+    ).encode("utf-8")
+
+    http_request = request.Request(
+        endpoint,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type":
+                "application/x-www-form-urlencoded",
+        },
+    )
+
+    with request.urlopen(
+        http_request,
+        timeout=15,
+    ) as response:
+
+        if response.status != 200:
+
+            raise RuntimeError(
+                "Telegram API request failed: "
+                f"HTTP {response.status}"
+            )
