@@ -7,11 +7,11 @@ from threading import RLock
 
 import pandas as pd
 
-from config import RISK_PER_TRADE_INR, IST_TIMEZONE
+from config import ACCOUNT_NAMES, RISK_PER_TRADE_INR, IST_TIMEZONE
 from signal_gate import SignalGate
 from strategies import StrategySignal, calc_sl_tp
 from telegram import TelegramConfig, TelegramMessage, render_signal_message, send_message
-from trading import PaperTrade, TradePlan
+from trading import AccountState, PaperTrade, TradePlan, can_open_trade, register_trade
 from trendpulse_runtime import TrendPulseRuntime, TrendPulseScanResult
 
 
@@ -31,11 +31,11 @@ class TrendPulseDispatchResult:
 class TrendPulseService:
     """Connect the canonical TrendPulse runtime to paper trading and Telegram.
 
-    The service never sends a signal that is stale, outside BUY/SELL, or
-    rejected by SignalGate. Telegram delivery is performed before the gate
-    counter is incremented, under a lock, so a transient send failure can be
-    retried without consuming a repeat allowance.
+    The service never sends a signal that is stale, outside BUY/SELL, rejected
+    by SignalGate, or over the assigned logical account's daily limit.
     """
+
+    DEFAULT_ACCOUNT = "nifty"
 
     def __init__(
         self,
@@ -46,6 +46,10 @@ class TrendPulseService:
         self.runtime = runtime or TrendPulseRuntime()
         self.telegram_config = telegram_config
         self._dispatch_lock = RLock()
+        self.accounts: dict[str, AccountState] = {
+            name: AccountState(name=name)
+            for name in ACCOUNT_NAMES
+        }
 
     @staticmethod
     def _quantity(plan: TradePlan) -> float:
@@ -66,6 +70,12 @@ class TrendPulseService:
         if self.telegram_config is None:
             self.telegram_config = TelegramConfig.from_env()
         return self.telegram_config
+
+    def _account(self, name: str = DEFAULT_ACCOUNT) -> AccountState:
+        try:
+            return self.accounts[name.lower()]
+        except KeyError as exc:
+            raise ValueError(f"Unknown TrendPulse account: {name}") from exc
 
     def dispatch_result(
         self,
@@ -100,71 +110,21 @@ class TrendPulseService:
                 reason="STALE_SIGNAL",
             )
 
-        if not self.runtime.gate.can_send(
-            signal,
-            symbol=scan.symbol,
-            now=current,
-        ):
-            return TrendPulseDispatchResult(
-                symbol=scan.symbol,
-                signal=signal,
-                scan=scan,
-                trade=None,
-                message=None,
-                sent=False,
-                reason="DUPLICATE_SIGNAL_LIMIT",
-            )
-
-        stop_loss, take_profit = calc_sl_tp(signal)
-        entry = float(signal.entry)
-        plan = TradePlan(
-            strategy=signal.strategy,
-            side=signal.signal,
-            signal_timestamp=signal.timestamp,
-            entry=entry,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-        )
-        trade = PaperTrade(plan=plan)
-        quantity = self._quantity(plan)
-
-        age_hours = self.runtime.gate.age_hours(signal, now=current)
-        freshness = "FRESH" if age_hours <= self.runtime.gate.max_age_hours else "STALE"
-        age_minutes = int(age_hours * 60)
-        age_str = (
-            f"{age_minutes} min ago"
-            if age_minutes < 60
-            else f"{age_minutes // 60} hr {age_minutes % 60} min ago"
-        )
-
-        message = render_signal_message(
-            signal,
-            symbol=f"{scan.symbol}.NS",
-            asset=scan.symbol.replace(".NS", ""),
-            market="NSE",
-            timeframe="1H",
-            entry=entry,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            quantity=quantity,
-            risk=RISK_PER_TRADE_INR,
-            account="nifty",
-            freshness=freshness,
-            age_str=age_str,
-        )
-
-        if not send:
-            return TrendPulseDispatchResult(
-                symbol=scan.symbol,
-                signal=signal,
-                scan=scan,
-                trade=trade,
-                message=message,
-                sent=False,
-                reason="READY_TO_SEND",
-            )
+        account_name = self.DEFAULT_ACCOUNT
 
         with self._dispatch_lock:
+            account = self._account(account_name)
+            if not can_open_trade(account):
+                return TrendPulseDispatchResult(
+                    symbol=scan.symbol,
+                    signal=signal,
+                    scan=scan,
+                    trade=None,
+                    message=None,
+                    sent=False,
+                    reason="ACCOUNT_DAILY_LIMIT",
+                )
+
             if not self.runtime.gate.can_send(
                 signal,
                 symbol=scan.symbol,
@@ -180,6 +140,55 @@ class TrendPulseService:
                     reason="DUPLICATE_SIGNAL_LIMIT",
                 )
 
+            stop_loss, take_profit = calc_sl_tp(signal)
+            entry = float(signal.entry)
+            plan = TradePlan(
+                strategy=signal.strategy,
+                side=signal.signal,
+                signal_timestamp=signal.timestamp,
+                entry=entry,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+            )
+            trade = PaperTrade(plan=plan)
+            quantity = self._quantity(plan)
+
+            age_hours = self.runtime.gate.age_hours(signal, now=current)
+            freshness = "FRESH" if age_hours <= self.runtime.gate.max_age_hours else "STALE"
+            age_minutes = int(age_hours * 60)
+            age_str = (
+                f"{age_minutes} min ago"
+                if age_minutes < 60
+                else f"{age_minutes // 60} hr {age_minutes % 60} min ago"
+            )
+
+            message = render_signal_message(
+                signal,
+                symbol=f"{scan.symbol}.NS",
+                asset=scan.symbol.replace(".NS", ""),
+                market="NSE",
+                timeframe="1H",
+                entry=entry,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                quantity=quantity,
+                risk=RISK_PER_TRADE_INR,
+                account=account_name,
+                freshness=freshness,
+                age_str=age_str,
+            )
+
+            if not send:
+                return TrendPulseDispatchResult(
+                    symbol=scan.symbol,
+                    signal=signal,
+                    scan=scan,
+                    trade=trade,
+                    message=message,
+                    sent=False,
+                    reason="READY_TO_SEND",
+                )
+
             send_message(message, self._config())
 
             accepted = self.runtime.gate.accept(
@@ -189,7 +198,11 @@ class TrendPulseService:
             )
 
             if not accepted:
-                raise RuntimeError("Signal gate rejected a signal after successful Telegram delivery")
+                raise RuntimeError(
+                    "Signal gate rejected a signal after successful Telegram delivery"
+                )
+
+            self.accounts[account_name] = register_trade(account)
 
         return TrendPulseDispatchResult(
             symbol=scan.symbol,
