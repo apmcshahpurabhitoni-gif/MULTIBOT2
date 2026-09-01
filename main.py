@@ -15,19 +15,18 @@ from yahoo_provider import YahooProvider
 logging.basicConfig(level=logging.INFO,format="%(asctime)s | %(levelname)s | %(message)s");logger=logging.getLogger("multibot2")
 DB=DatabaseManager(settings.db_path);ACCOUNTS={};ACTIVE=[];HISTORY=[];SIGNALS=[];RUNTIME=None;TREND=None;SWEEP=None;REMINDERS=None;STOP=threading.Event();LOCK=threading.RLock()
 def now():return pd.Timestamp.now(tz=IST_TIMEZONE)
-def build_market_data_provider()->YahooProvider:
-    validate_runtime_configuration();return YahooProvider()
+def build_market_data_provider()->YahooProvider:validate_runtime_configuration();return YahooProvider()
 def validate_runtime_configuration():
     validate_configuration()
     if settings.timezone!=IST_TIMEZONE or settings.timeframe!="1h" or settings.market_data_provider!="yahoo" or settings.freshness_hours!=1:raise ValueError("Locked MULTIBOT2 runtime configuration violated")
 def init_state():
     global ACCOUNTS,ACTIVE,HISTORY
-    today=now().date().isoformat();rows=DB.load_accounts(ACCOUNT_NAMES,ACCOUNT_SIZE_INR,today);ACCOUNTS={n:AccountState(n,float(rows[n]["starting_balance"]),float(rows[n]["balance"]),float(rows[n]["planned_risk_used"]),int(rows[n]["trades_today"])) for n in ACCOUNT_NAMES};ACTIVE=DB.load_trades("OPEN");HISTORY=DB.load_trades("CLOSED")
+    rows=DB.load_accounts(ACCOUNT_NAMES,ACCOUNT_SIZE_INR,now().date().isoformat());ACCOUNTS={n:AccountState(n,float(rows[n]["starting_balance"]),float(rows[n]["balance"]),float(rows[n]["planned_risk_used"]),int(rows[n]["trades_today"])) for n in ACCOUNT_NAMES};ACTIVE=DB.load_trades("OPEN");HISTORY=DB.load_trades("CLOSED")
 def ensure_runtime():
     global RUNTIME,TREND,SWEEP,REMINDERS
     validate_runtime_configuration()
-    if RUNTIME is None:RUNTIME=TrendPulseRuntime(provider=build_market_data_provider())
     if not ACCOUNTS:init_state()
+    if RUNTIME is None:RUNTIME=TrendPulseRuntime(provider=build_market_data_provider())
     if TREND is None:TREND=TrendPulseService(runtime=RUNTIME,database=DB,accounts=ACCOUNTS)
     if SWEEP is None:SWEEP=SweepService(runtime=RUNTIME,database=DB,accounts=ACCOUNTS)
     if REMINDERS is None:REMINDERS=ReminderService(DB)
@@ -69,7 +68,9 @@ def monitor_loop():
         STOP.wait(settings.monitor_interval_seconds)
 def snapshot():
     ensure_runtime()
-    with LOCK:return {"system":{"status":"ONLINE","mode":"PAPER","timezone":IST_TIMEZONE,"timeframe":"1h","leverage":1},"rules":{"account_size_inr":ACCOUNT_SIZE_INR,"risk_per_trade_inr":RISK_PER_TRADE_INR,"account_trade_limits":dict(ACCOUNT_TRADE_LIMITS),"signal_freshness_hours":1},"universe":{"count":15,"symbols":list(NSE_15_SYMBOLS),"fixed":True},"accounts":[{"name":a.name,"balance":a.balance,"trades_today":a.trades_today,"daily_trade_limit":a.daily_trade_limit,"remaining_trades":a.remaining_trades,"planned_risk_used":a.planned_risk_used} for a in ACCOUNTS.values()],"signals":list(reversed(SIGNALS[-500:])),"trades":ACTIVE+HISTORY[:200],"counts":{"open_trades":len(ACTIVE),"closed_trades":len(HISTORY)},"generated_at":now().isoformat()}
+    with LOCK:
+        account_rows=[{"name":a.name,"starting_balance":a.starting_balance,"balance":a.balance,"planned_risk_used":a.planned_risk_used,"daily_trade_limit":a.daily_trade_limit,"max_daily_planned_risk":a.max_daily_planned_risk,"trades_today":a.trades_today,"remaining_trades":a.remaining_trades,"remaining_planned_risk":a.remaining_planned_risk} for a in ACCOUNTS.values()]
+        return {"system":{"status":"ONLINE","mode":"PAPER","timezone":IST_TIMEZONE,"timeframe":"1h","leverage":1},"rules":{"account_size_inr":ACCOUNT_SIZE_INR,"risk_per_trade_inr":RISK_PER_TRADE_INR,"account_trade_limits":dict(ACCOUNT_TRADE_LIMITS),"signal_freshness_hours":1},"universe":{"count":15,"symbols":list(NSE_15_SYMBOLS),"fixed":True},"accounts":{"count":4,"names":list(ACCOUNT_NAMES),"data":account_rows},"signals":list(reversed(SIGNALS[-500:])),"trades":ACTIVE+HISTORY[:200],"counts":{"signals":len(SIGNALS),"trades":len(ACTIVE)+len(HISTORY),"open_trades":len(ACTIVE),"closed_trades":len(HISTORY)},"generated_at":now().isoformat()}
 def web_server():
     root=os.path.dirname(__file__);files={"/":("dashboard.html","text/html; charset=utf-8"),"/app.js":("app.js","application/javascript"),"/styles.css":("styles.css","text/css")}
     def app(env,start):
