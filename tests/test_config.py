@@ -4,11 +4,13 @@ from config import (
     DEFAULT_TIMEFRAME,
     IST_TIMEZONE,
     LEVERAGE,
+    MARKET_DATA_PROVIDER,
     MAX_DAILY_PLANNED_RISK_INR,
     MAX_TRADES_PER_DAY,
     NSE_15_SYMBOLS,
     RISK_PER_TRADE_INR,
     SIGNAL_FRESHNESS_HOURS,
+    settings,
     validate_configuration,
 )
 
@@ -51,10 +53,7 @@ def test_max_trades_per_day():
 
 
 def test_daily_planned_risk():
-    assert (
-        MAX_DAILY_PLANNED_RISK_INR
-        == 6_000
-    )
+    assert MAX_DAILY_PLANNED_RISK_INR == 6_000
 
 
 def test_leverage_is_one_x():
@@ -84,6 +83,14 @@ def test_primary_timeframe_is_one_hour():
 
 def test_signal_freshness_is_one_hour():
     assert SIGNAL_FRESHNESS_HOURS == 1
+
+
+def test_market_data_provider_is_yahoo():
+    assert MARKET_DATA_PROVIDER == "yahoo"
+
+
+def test_runtime_market_data_provider_is_yahoo():
+    assert settings.market_data_provider == "yahoo"
 
 
 def test_complete_configuration_is_valid():
