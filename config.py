@@ -1,7 +1,6 @@
 """Central configuration for MULTIBOT2.
 
 All frozen project-level rules belong here.
-
 Secrets are never hard-coded.
 Runtime credentials are loaded from environment variables.
 """
@@ -21,6 +20,13 @@ DEFAULT_TIMEFRAME = "1h"
 SIGNAL_FRESHNESS_HOURS = 1
 NSE_MARKET_OPEN = "09:15"
 NSE_MARKET_CLOSE = "15:30"
+
+
+# ============================================================
+# MARKET-DATA PROVIDER
+# ============================================================
+
+MARKET_DATA_PROVIDER = "yahoo"
 
 
 # ============================================================
@@ -53,9 +59,11 @@ NSE_15_SYMBOLS: tuple[str, ...] = (
 ACCOUNT_SIZE_INR = 100_000
 RISK_PER_TRADE_INR = 2_000
 MAX_TRADES_PER_DAY = 3
+
 MAX_DAILY_PLANNED_RISK_INR = (
     RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY
 )
+
 LEVERAGE = 1.0
 
 
@@ -83,9 +91,7 @@ class Settings:
     timeframe: str = DEFAULT_TIMEFRAME
     freshness_hours: int = SIGNAL_FRESHNESS_HOURS
 
-    market_data_provider: str | None = None
-    zerodha_api_key: str | None = None
-    zerodha_access_token: str | None = None
+    market_data_provider: str = MARKET_DATA_PROVIDER
 
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
@@ -113,34 +119,47 @@ class Settings:
                 "FRESHNESS_HOURS must be greater than zero"
             )
 
-        timezone = os.getenv("TIMEZONE", IST_TIMEZONE)
+        timezone = os.getenv(
+            "TIMEZONE",
+            IST_TIMEZONE,
+        )
+
         if timezone != IST_TIMEZONE:
-            raise ValueError("TIMEZONE must be Asia/Kolkata")
+            raise ValueError(
+                "TIMEZONE must be Asia/Kolkata"
+            )
 
         timeframe = os.getenv(
             "TIMEFRAME",
             DEFAULT_TIMEFRAME,
         )
-        if timeframe != DEFAULT_TIMEFRAME:
-            raise ValueError("TIMEFRAME must be 1h")
 
-        provider = os.getenv("MARKET_DATA_PROVIDER")
-        if provider is not None:
-            provider = provider.strip().lower()
-            if provider != "zerodha":
-                raise ValueError(
-                    "MARKET_DATA_PROVIDER must be zerodha"
-                )
+        if timeframe != DEFAULT_TIMEFRAME:
+            raise ValueError(
+                "TIMEFRAME must be 1h"
+            )
+
+        provider = os.getenv(
+            "MARKET_DATA_PROVIDER",
+            MARKET_DATA_PROVIDER,
+        ).strip().lower()
+
+        if provider != MARKET_DATA_PROVIDER:
+            raise ValueError(
+                "MARKET_DATA_PROVIDER must be yahoo"
+            )
 
         return cls(
             timezone=timezone,
             timeframe=timeframe,
             freshness_hours=freshness_hours,
             market_data_provider=provider,
-            zerodha_api_key=os.getenv("ZERODHA_API_KEY"),
-            zerodha_access_token=os.getenv("ZERODHA_ACCESS_TOKEN"),
-            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
-            telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID"),
+            telegram_bot_token=os.getenv(
+                "TELEGRAM_BOT_TOKEN"
+            ),
+            telegram_chat_id=os.getenv(
+                "TELEGRAM_CHAT_ID"
+            ),
             dashboard_api_url=os.getenv(
                 "DASHBOARD_API_URL",
                 "/api/dashboard",
@@ -158,6 +177,16 @@ settings = Settings.from_env()
 def validate_configuration() -> None:
     """Validate all frozen configuration rules."""
 
+    if MARKET_DATA_PROVIDER != "yahoo":
+        raise ValueError(
+            "MULTIBOT2 market-data provider must be Yahoo Finance"
+        )
+
+    if settings.market_data_provider != "yahoo":
+        raise ValueError(
+            "MULTIBOT2 runtime provider must be Yahoo Finance"
+        )
+
     if len(NSE_15_SYMBOLS) != 15:
         raise ValueError(
             "NSE universe must contain exactly 15 symbols"
@@ -169,10 +198,14 @@ def validate_configuration() -> None:
         )
 
     if ACCOUNT_SIZE_INR <= 0:
-        raise ValueError("Account size must be positive")
+        raise ValueError(
+            "Account size must be positive"
+        )
 
     if RISK_PER_TRADE_INR <= 0:
-        raise ValueError("Risk per trade must be positive")
+        raise ValueError(
+            "Risk per trade must be positive"
+        )
 
     if MAX_TRADES_PER_DAY <= 0:
         raise ValueError(
