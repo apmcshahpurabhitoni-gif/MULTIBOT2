@@ -17,24 +17,26 @@ from config import (
 # CANONICAL 1H CANDLE CONVENTION
 # ============================================================
 
-# Timestamps represent CANDLE OPEN TIME.
-# Therefore:
-#   09:15 -> 09:15-10:15
-#   10:15 -> 10:15-11:15
-#   11:15 -> 11:15-12:15
-#   12:15 -> 12:15-13:15
-#   13:15 -> 13:15-14:15
-#   14:15 -> 14:15-15:15
+# A 1H candle timestamp represents its CLOSE time.
+# The minute range is therefore displayed as:
 #
-# The 15:15-15:30 remainder is not treated as a 1H candle.
+#   10:15 -> 09:15-10:15
+#   11:15 -> 10:16-11:15
+#   12:15 -> 11:16-12:15
+#   13:15 -> 12:16-13:15
+#   14:15 -> 13:16-14:15
+#   15:15 -> 14:16-15:15
+#
+# The first 1H candle cannot be complete before 10:15.
+# The 15:16-15:30 remainder is not treated as a 1H candle.
 
 HOURLY_OBSERVATION_TIMES: tuple[time, ...] = (
-    time(9, 15),
     time(10, 15),
     time(11, 15),
     time(12, 15),
     time(13, 15),
     time(14, 15),
+    time(15, 15),
 )
 
 CANDLE_INTERVAL = pd.Timedelta(hours=1)
@@ -49,10 +51,7 @@ def normalize_index(
 ) -> pd.DataFrame:
     """Return a sorted DataFrame using canonical IST timestamps."""
 
-    if not isinstance(
-        frame.index,
-        pd.DatetimeIndex,
-    ):
+    if not isinstance(frame.index, pd.DatetimeIndex):
         raise CandleValidationError(
             "Candle data must use a DatetimeIndex"
         )
@@ -64,10 +63,7 @@ def normalize_index(
 
     result = frame.copy()
 
-    result.index = result.index.tz_convert(
-        IST_TIMEZONE
-    )
-
+    result.index = result.index.tz_convert(IST_TIMEZONE)
     result = result.sort_index()
 
     if result.index.has_duplicates:
@@ -90,31 +86,19 @@ def is_nse_session_timestamp(
             "Timestamp must be timezone-aware"
         )
 
-    local = timestamp.tz_convert(
-        IST_TIMEZONE
-    )
-
+    local = timestamp.tz_convert(IST_TIMEZONE)
     current = local.time()
 
-    market_open = time.fromisoformat(
-        NSE_MARKET_OPEN
-    )
+    market_open = time.fromisoformat(NSE_MARKET_OPEN)
+    market_close = time.fromisoformat(NSE_MARKET_CLOSE)
 
-    market_close = time.fromisoformat(
-        NSE_MARKET_CLOSE
-    )
-
-    return (
-        market_open
-        <= current
-        <= market_close
-    )
+    return market_open <= current <= market_close
 
 
 def is_hourly_observation(
     timestamp: pd.Timestamp,
 ) -> bool:
-    """Return True for a canonical 1H candle open timestamp."""
+    """Return True for a canonical 1H candle close timestamp."""
 
     timestamp = pd.Timestamp(timestamp)
 
@@ -123,23 +107,18 @@ def is_hourly_observation(
             "Timestamp must be timezone-aware"
         )
 
-    local = timestamp.tz_convert(
-        IST_TIMEZONE
-    )
+    local = timestamp.tz_convert(IST_TIMEZONE)
 
-    return (
-        local.time()
-        in HOURLY_OBSERVATION_TIMES
-    )
+    return local.time() in HOURLY_OBSERVATION_TIMES
 
 
 def candle_close_timestamp(
     timestamp: pd.Timestamp,
 ) -> pd.Timestamp:
-    """Return the close time for a canonical 1H candle.
+    """Return the canonical close time for a candle.
 
-    Candle timestamps are open times, so a 14:15 candle is not
-    closed until 15:15.
+    The timestamp is already the candle close timestamp, so it is
+    returned unchanged after validation.
     """
 
     timestamp = pd.Timestamp(timestamp)
@@ -151,12 +130,67 @@ def candle_close_timestamp(
 
     if not is_hourly_observation(timestamp):
         raise CandleValidationError(
-            "Timestamp is not a canonical 1H candle open time"
+            "Timestamp is not a canonical 1H candle close time"
         )
 
-    return timestamp.tz_convert(
-        IST_TIMEZONE
-    ) + CANDLE_INTERVAL
+    return timestamp.tz_convert(IST_TIMEZONE)
+
+
+def candle_open_timestamp(
+    timestamp: pd.Timestamp,
+) -> pd.Timestamp:
+    """Return the beginning of the displayed 1H candle interval."""
+
+    timestamp = pd.Timestamp(timestamp)
+
+    if timestamp.tzinfo is None:
+        raise CandleValidationError(
+            "Timestamp must be timezone-aware"
+        )
+
+    if not is_hourly_observation(timestamp):
+        raise CandleValidationError(
+            "Timestamp is not a canonical 1H candle close time"
+        )
+
+    return timestamp.tz_convert(IST_TIMEZONE) - CANDLE_INTERVAL
+
+
+def candle_display_range(
+    timestamp: pd.Timestamp,
+) -> str:
+    """Return the human-readable minute range for a 1H candle.
+
+    Examples:
+        10:15 -> 09:15-10:15
+        11:15 -> 10:16-11:15
+    """
+
+    close = pd.Timestamp(timestamp)
+
+    if close.tzinfo is None:
+        raise CandleValidationError(
+            "Timestamp must be timezone-aware"
+        )
+
+    close = close.tz_convert(IST_TIMEZONE)
+
+    if not is_hourly_observation(close):
+        raise CandleValidationError(
+            "Timestamp is not a canonical 1H candle close time"
+        )
+
+    open_time = candle_open_timestamp(close)
+
+    display_start = open_time
+
+    if close.time() != time(10, 15):
+        display_start = open_time + pd.Timedelta(minutes=1)
+
+    return (
+        f"{display_start:%H:%M}-"
+        f"{close:%H:%M}"
+    )
 
 
 def closed_candles(
@@ -164,7 +198,7 @@ def closed_candles(
     *,
     as_of: pd.Timestamp,
 ) -> pd.DataFrame:
-    """Return only 1H candles whose intervals have closed by ``as_of``."""
+    """Return only 1H candles whose close time has passed."""
 
     result = normalize_index(frame)
 
@@ -175,13 +209,10 @@ def closed_candles(
             "as_of must be timezone-aware"
         )
 
-    as_of = as_of.tz_convert(
-        IST_TIMEZONE
-    )
+    as_of = as_of.tz_convert(IST_TIMEZONE)
 
     closed_mask = result.index.map(
-        lambda timestamp: candle_close_timestamp(timestamp)
-        <= as_of
+        lambda timestamp: candle_close_timestamp(timestamp) <= as_of
     )
 
     return result.loc[closed_mask]
@@ -190,7 +221,7 @@ def closed_candles(
 def validate_hourly_observations(
     frame: pd.DataFrame,
 ) -> None:
-    """Reject timestamps outside the canonical hourly open-time schedule."""
+    """Reject timestamps outside the canonical hourly close-time schedule."""
 
     result = normalize_index(frame)
 
@@ -215,7 +246,7 @@ def validate_hourly_observations(
 def remove_out_of_session_candles(
     frame: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Keep only candles whose open timestamps are inside NSE session hours."""
+    """Keep candles whose close timestamps are within NSE hours."""
 
     result = normalize_index(frame)
 
@@ -231,7 +262,7 @@ def latest_closed_candle(
     *,
     as_of: pd.Timestamp,
 ) -> pd.Series | None:
-    """Return the latest 1H candle whose full interval has closed."""
+    """Return the latest 1H candle whose close time has passed."""
 
     closed = closed_candles(
         frame,
