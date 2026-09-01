@@ -4,7 +4,7 @@ Complete paper-trading bot based on the original `multi-strategy-telegram-bot`, 
 
 ## Runtime contract
 
-`Yahoo 1m → canonical NSE 1H → confirmed 4H → strategy → 1h freshness → persistent duplicate/reminder gate → independent account risk → paper trade → approved Telegram → SQLite → dashboard`
+`Yahoo 1m → canonical NSE 1H → confirmed 4H → strategy → 1h freshness → persistent duplicate/reminder gate → independent account risk → paper trade → approved Telegram → Supabase persistence → dashboard`
 
 ## Locked rules
 
@@ -22,7 +22,8 @@ Complete paper-trading bot based on the original `multi-strategy-telegram-bot`, 
 - TrendPulse SL=1.5 ATR and TP=3 ATR.
 - Sweep V2 uses strict two-sided sweep confirmation, market entry, sweep extreme SL, and 1:2 TP.
 - Paper trading only; leverage is 1x.
-- SQLite is the authoritative persistent state for accounts, trades, signals and reminders.
+- Supabase is the production-authoritative persistent store for accounts, trades, signals and reminder state; SQLite is only the local runtime cache/fallback when Supabase is not configured.
+- MULTIBOT2 has no pending-sweep persistence or pending-sweep workflow.
 
 ## Runtime components
 
@@ -40,7 +41,11 @@ Complete paper-trading bot based on the original `multi-strategy-telegram-bot`, 
 
 `python main.py`
 
-Required secrets are environment-only: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Optional runtime settings include `BOT_STATE_DB_PATH`, `PORT`, `SCAN_INTERVAL_SECONDS`, and `MONITOR_INTERVAL_SECONDS`. Trading rules themselves are locked in `config.py` and cannot be overridden by environment variables.
+Required secrets are environment-only: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, and `SUPABASE_KEY`. Optional runtime settings include `BOT_STATE_DB_PATH`, `PORT`, `SCAN_INTERVAL_SECONDS`, and `MONITOR_INTERVAL_SECONDS`. Trading rules themselves are locked in `config.py` and cannot be overridden by environment variables.
+
+## Render / uptime
+
+Render runs the web service with `pip install -e .` and `python main.py`, with `/ping` as the health/keep-alive endpoint. Keep the existing external cron job configured to GET `/ping` every 10 minutes so the Render free service is regularly awakened. `/ping` is intentionally lightweight and does not scan markets, send signals, or mutate trading state.
 
 ## Validation
 
