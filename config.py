@@ -3,7 +3,7 @@
 All frozen project-level rules belong here.
 
 Secrets are never hard-coded.
-Telegram credentials are loaded from environment variables.
+Runtime credentials are loaded from environment variables.
 """
 
 from __future__ import annotations
@@ -17,20 +17,14 @@ from dataclasses import dataclass
 # ============================================================
 
 IST_TIMEZONE = "Asia/Kolkata"
-
 DEFAULT_TIMEFRAME = "1h"
-
 SIGNAL_FRESHNESS_HOURS = 1
-
 NSE_MARKET_OPEN = "09:15"
 NSE_MARKET_CLOSE = "15:30"
 
 
 # ============================================================
 # HARD-CODED NSE-15 UNIVERSE
-#
-# This list is intentionally fixed.
-# It must NOT be automatically refreshed.
 # ============================================================
 
 NSE_15_SYMBOLS: tuple[str, ...] = (
@@ -57,23 +51,16 @@ NSE_15_SYMBOLS: tuple[str, ...] = (
 # ============================================================
 
 ACCOUNT_SIZE_INR = 100_000
-
 RISK_PER_TRADE_INR = 2_000
-
 MAX_TRADES_PER_DAY = 3
-
 MAX_DAILY_PLANNED_RISK_INR = (
     RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY
 )
-
 LEVERAGE = 1.0
 
 
 # ============================================================
-# ACCOUNT IDENTIFIERS
-#
-# These are the four logical accounts recovered from the
-# original project. Credentials/configuration remain external.
+# FOUR LOGICAL ACCOUNTS
 # ============================================================
 
 ACCOUNT_NAMES: tuple[str, ...] = (
@@ -93,15 +80,14 @@ class Settings:
     """Runtime settings loaded from environment variables."""
 
     timezone: str = IST_TIMEZONE
-
     timeframe: str = DEFAULT_TIMEFRAME
-
     freshness_hours: int = SIGNAL_FRESHNESS_HOURS
 
     market_data_provider: str | None = None
+    zerodha_api_key: str | None = None
+    zerodha_access_token: str | None = None
 
     telegram_bot_token: str | None = None
-
     telegram_chat_id: str | None = None
 
     dashboard_api_url: str = "/api/dashboard"
@@ -117,9 +103,7 @@ class Settings:
 
         try:
             freshness_hours = int(freshness)
-
         except ValueError as exc:
-
             raise ValueError(
                 "FRESHNESS_HOURS must be an integer"
             ) from exc
@@ -129,45 +113,34 @@ class Settings:
                 "FRESHNESS_HOURS must be greater than zero"
             )
 
-        timezone = os.getenv(
-            "TIMEZONE",
-            IST_TIMEZONE,
-        )
-
+        timezone = os.getenv("TIMEZONE", IST_TIMEZONE)
         if timezone != IST_TIMEZONE:
-            raise ValueError(
-                "TIMEZONE must be Asia/Kolkata"
-            )
+            raise ValueError("TIMEZONE must be Asia/Kolkata")
 
         timeframe = os.getenv(
             "TIMEFRAME",
             DEFAULT_TIMEFRAME,
         )
-
         if timeframe != DEFAULT_TIMEFRAME:
-            raise ValueError(
-                "TIMEFRAME must be 1h"
-            )
+            raise ValueError("TIMEFRAME must be 1h")
+
+        provider = os.getenv("MARKET_DATA_PROVIDER")
+        if provider is not None:
+            provider = provider.strip().lower()
+            if provider != "zerodha":
+                raise ValueError(
+                    "MARKET_DATA_PROVIDER must be zerodha"
+                )
 
         return cls(
             timezone=timezone,
-
             timeframe=timeframe,
-
             freshness_hours=freshness_hours,
-
-            market_data_provider=os.getenv(
-                "MARKET_DATA_PROVIDER"
-            ),
-
-            telegram_bot_token=os.getenv(
-                "TELEGRAM_BOT_TOKEN"
-            ),
-
-            telegram_chat_id=os.getenv(
-                "TELEGRAM_CHAT_ID"
-            ),
-
+            market_data_provider=provider,
+            zerodha_api_key=os.getenv("ZERODHA_API_KEY"),
+            zerodha_access_token=os.getenv("ZERODHA_ACCESS_TOKEN"),
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
+            telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID"),
             dashboard_api_url=os.getenv(
                 "DASHBOARD_API_URL",
                 "/api/dashboard",
@@ -196,14 +169,10 @@ def validate_configuration() -> None:
         )
 
     if ACCOUNT_SIZE_INR <= 0:
-        raise ValueError(
-            "Account size must be positive"
-        )
+        raise ValueError("Account size must be positive")
 
     if RISK_PER_TRADE_INR <= 0:
-        raise ValueError(
-            "Risk per trade must be positive"
-        )
+        raise ValueError("Risk per trade must be positive")
 
     if MAX_TRADES_PER_DAY <= 0:
         raise ValueError(
@@ -216,8 +185,7 @@ def validate_configuration() -> None:
         )
 
     expected_daily_risk = (
-        RISK_PER_TRADE_INR *
-        MAX_TRADES_PER_DAY
+        RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY
     )
 
     if MAX_DAILY_PLANNED_RISK_INR != expected_daily_risk:
