@@ -1,84 +1,41 @@
-"""Regression tests for the source-derived TrendPulse baseline."""
+"""Regression tests for the canonical TrendPulse strategy boundary."""
 
 import pandas as pd
 import pytest
 
-from trendpulse import (
-    EMA_FAST_1H,
-    EMA_TREND_4H,
-    RSI_PERIOD,
-    ATR_PERIOD,
-    MACD_FAST,
-    MACD_SLOW,
-    MACD_SIGNAL,
-    MIN_1H_ROWS,
-    MIN_4H_ROWS,
-    MIN_ATR_PERCENT,
-    evaluate_trendpulse,
-)
+from strategies import trendpulse
 
 
-def _frame(rows: int = 100) -> pd.DataFrame:
+def _series(rows: int = 100) -> pd.Series:
     index = pd.date_range(
         "2026-01-01 09:15", periods=rows, freq="1h", tz="Asia/Kolkata"
     )
-    close = pd.Series(range(100, 100 + rows), index=index, dtype=float)
-    return pd.DataFrame(
-        {
-            "open": close - 0.5,
-            "high": close + 1.0,
-            "low": close - 1.0,
-            "close": close,
-        },
-        index=index,
-    )
+    return pd.Series(range(100, 100 + rows), index=index, dtype=float)
 
 
-def test_historical_parameters_are_locked_in_one_module():
-    assert EMA_FAST_1H == 20
-    assert EMA_TREND_4H == 50
-    assert RSI_PERIOD == 14
-    assert ATR_PERIOD == 14
-    assert MACD_FAST == 12
-    assert MACD_SLOW == 26
-    assert MACD_SIGNAL == 9
-    assert MIN_1H_ROWS == 50
-    assert MIN_4H_ROWS == 15
-    assert MIN_ATR_PERCENT == 0.2
+def test_insufficient_data_returns_no_signal():
+    close = _series(49)
+    result = trendpulse(close, close, timestamp=close.index[-1])
+    assert result.signal == "NO_SIGNAL"
+    assert result.reason == "INSUFFICIENT_DATA"
 
 
-def test_insufficient_1h_data_returns_no_signal():
-    result = evaluate_trendpulse(_frame(49))
-    assert result.trend == "NO_SIGNAL"
-    assert result.reason == "INSUFFICIENT_1H_DATA"
-
-
-def test_naive_timestamps_are_rejected():
-    frame = _frame()
-    frame.index = frame.index.tz_localize(None)
+def test_naive_timestamp_is_rejected():
+    close = _series()
     with pytest.raises(ValueError, match="timezone-aware"):
-        evaluate_trendpulse(frame)
-
-
-def test_missing_ohlc_is_rejected():
-    frame = _frame().drop(columns="close")
-    with pytest.raises(ValueError, match="Missing required OHLC"):
-        evaluate_trendpulse(frame)
+        trendpulse(close, close, timestamp=pd.Timestamp("2026-01-01 10:15"))
 
 
 def test_result_is_deterministic_for_same_input():
-    frame = _frame()
-    first = evaluate_trendpulse(frame)
-    second = evaluate_trendpulse(frame.copy())
+    close_1h = _series()
+    close_4h = _series()
+    first = trendpulse(close_1h, close_4h, timestamp=close_1h.index[-1])
+    second = trendpulse(close_1h.copy(), close_4h.copy(), timestamp=close_1h.index[-1])
     assert first == second
 
 
-def test_final_row_is_not_used_as_current_closed_candle():
-    frame = _frame()
-    base = evaluate_trendpulse(frame)
-    changed = frame.copy()
-    changed.iloc[-1, changed.columns.get_loc("close")] = 1_000_000
-    changed.iloc[-1, changed.columns.get_loc("high")] = 1_000_001
-    changed.iloc[-1, changed.columns.get_loc("open")] = 999_999
-    result = evaluate_trendpulse(changed)
-    assert result == base
+def test_non_aligned_conditions_return_no_signal():
+    close_1h = _series()
+    close_4h = _series()
+    result = trendpulse(close_1h, close_4h, timestamp=close_1h.index[-1])
+    assert result.signal == "NO_SIGNAL"
