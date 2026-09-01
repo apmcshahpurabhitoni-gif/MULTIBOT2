@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import time
 from typing import Iterable
 
 import pandas as pd
 
-from config import IST_TIMEZONE
+from config import (
+    IST_TIMEZONE,
+    NSE_MARKET_CLOSE,
+    NSE_MARKET_OPEN,
+    NSE_15_SYMBOLS,
+)
+from yahoo_provider import YahooProvider
 
 
 REQUIRED_OHLC = (
@@ -16,6 +23,8 @@ REQUIRED_OHLC = (
     "low",
     "close",
 )
+
+YAHOO_NSE_SUFFIX = ".NS"
 
 
 class MarketDataError(ValueError):
@@ -27,12 +36,10 @@ class Candle:
     """One normalized OHLC candle."""
 
     timestamp: pd.Timestamp
-
     open: float
     high: float
     low: float
     close: float
-
     volume: float | None = None
 
     def __post_init__(self) -> None:
@@ -82,10 +89,7 @@ def normalize_candles(
 ) -> pd.DataFrame:
     """Normalize provider data into canonical IST OHLC data."""
 
-    if not isinstance(
-        frame,
-        pd.DataFrame,
-    ):
+    if not isinstance(frame, pd.DataFrame):
         raise TypeError(
             "Market data must be a pandas DataFrame"
         )
@@ -129,42 +133,29 @@ def normalize_candles(
         )
 
     for column in REQUIRED_OHLC:
-
         result[column] = pd.to_numeric(
             result[column],
             errors="coerce",
         )
 
-    if result[
-        list(REQUIRED_OHLC)
-    ].isna().any().any():
-
+    if result[list(REQUIRED_OHLC)].isna().any().any():
         raise MarketDataError(
             "OHLC data contains invalid values"
         )
 
-    if (
-        result[
-            list(REQUIRED_OHLC)
-        ] <= 0
-    ).any().any():
-
+    if (result[list(REQUIRED_OHLC)] <= 0).any().any():
         raise MarketDataError(
             "OHLC values must be positive"
         )
 
     invalid_high = (
         result["high"]
-        < result[
-            ["open", "close"]
-        ].max(axis=1)
+        < result[["open", "close"]].max(axis=1)
     )
 
     invalid_low = (
         result["low"]
-        > result[
-            ["open", "close"]
-        ].min(axis=1)
+        > result[["open", "close"]].min(axis=1)
     )
 
     if invalid_high.any():
@@ -188,7 +179,6 @@ def candles_from_records(
     records = list(records)
 
     if not records:
-
         return pd.DataFrame(
             columns=list(REQUIRED_OHLC),
             index=pd.DatetimeIndex(
@@ -231,10 +221,7 @@ def validate_symbol(
 ) -> str:
     """Normalize and validate an NSE symbol."""
 
-    if not isinstance(
-        symbol,
-        str,
-    ):
+    if not isinstance(symbol, str):
         raise TypeError(
             "Symbol must be a string"
         )
@@ -252,9 +239,169 @@ def validate_symbol(
 def get_required_symbols() -> tuple[str, ...]:
     """Return the frozen MULTIBOT2 NSE-15 universe."""
 
-    from config import NSE_15_SYMBOLS
-
     return NSE_15_SYMBOLS
+
+
+def yahoo_symbol(symbol: str) -> str:
+    """Convert an NSE symbol into its Yahoo Finance symbol."""
+
+    symbol = validate_symbol(symbol)
+
+    if symbol not in NSE_15_SYMBOLS:
+        raise MarketDataError(
+            f"Symbol is outside the fixed NSE-15 universe: {symbol}"
+        )
+
+    return f"{symbol}{YAHOO_NSE_SUFFIX}"
+
+
+def _session_minute_mask(
+    index: pd.DatetimeIndex,
+) -> pd.Series:
+    """Return timestamps inside the NSE cash session."""
+
+    market_open = time.fromisoformat(NSE_MARKET_OPEN)
+    market_close = time.fromisoformat(NSE_MARKET_CLOSE)
+
+    return pd.Series(
+        [
+            market_open <= timestamp.time() < market_close
+            for timestamp in index
+        ],
+        index=index,
+    )
+
+
+def build_nse_hourly_candles(
+    minute_frame: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build canonical NSE 1H candles from 1-minute Yahoo data.
+
+    Canonical convention:
+
+        09:15-10:14 -> timestamp 10:15
+        10:15-11:14 -> timestamp 11:15
+        11:15-12:14 -> timestamp 12:15
+        12:15-13:14 -> timestamp 13:15
+        13:15-14:14 -> timestamp 14:15
+        14:15-15:14 -> timestamp 15:15
+
+    The remaining 15:15-15:29 session minutes are not another
+    hourly candle.
+    """
+
+    frame = normalize_candles(minute_frame)
+
+    if frame.empty:
+        return frame
+
+    session_mask = _session_minute_mask(frame.index)
+    frame = frame.loc[session_mask.to_numpy()].copy()
+
+    if frame.empty:
+        return frame
+
+    frame["session_date"] = frame.index.date
+    frame["minute_from_open"] = (
+        (
+            frame.index.hour * 60
+            + frame.index.minute
+        )
+        - (9 * 60 + 15)
+    )
+
+    frame = frame[
+        (frame["minute_from_open"] >= 0)
+        & (frame["minute_from_open"] < 360)
+    ].copy()
+
+    if frame.empty:
+        return pd.DataFrame(
+            columns=list(REQUIRED_OHLC),
+            index=pd.DatetimeIndex(
+                [],
+                tz=IST_TIMEZONE,
+            ),
+        )
+
+    frame["bucket"] = (
+        frame["minute_from_open"] // 60
+    )
+
+    output: list[dict] = []
+
+    for (session_date, bucket), group in frame.groupby(
+        ["session_date", "bucket"],
+        sort=True,
+    ):
+        group = group.sort_index()
+
+        if len(group) != 60:
+            # Never manufacture an hourly candle from incomplete data.
+            continue
+
+        expected = pd.date_range(
+            start=group.index[0],
+            periods=60,
+            freq="1min",
+            tz=IST_TIMEZONE,
+        )
+
+        if not group.index.equals(expected):
+            continue
+
+        open_timestamp = group.index[0]
+
+        close_timestamp = open_timestamp + pd.Timedelta(
+            hours=1
+        )
+
+        output.append(
+            {
+                "timestamp": close_timestamp,
+                "open": float(group["open"].iloc[0]),
+                "high": float(group["high"].max()),
+                "low": float(group["low"].min()),
+                "close": float(group["close"].iloc[-1]),
+            }
+        )
+
+    if not output:
+        return pd.DataFrame(
+            columns=list(REQUIRED_OHLC),
+            index=pd.DatetimeIndex(
+                [],
+                tz=IST_TIMEZONE,
+            ),
+        )
+
+    result = candles_from_records(output)
+
+    return result
+
+
+def fetch_nse_hourly(
+    symbol: str,
+    *,
+    provider: YahooProvider | None = None,
+    period: str = "5d",
+) -> pd.DataFrame:
+    """Fetch and construct canonical NSE 1H candles from Yahoo 1m data."""
+
+    yahoo = provider or YahooProvider()
+
+    yf_symbol = yahoo_symbol(symbol)
+
+    minute_data = yahoo.fetch(
+        yf_symbol,
+        period=period,
+        interval="1m",
+        validate_hourly=False,
+    )
+
+    return build_nse_hourly_candles(
+        minute_data
+    )
 
 
 def candle_age_hours(
