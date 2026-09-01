@@ -36,4 +36,5 @@ py-modules = [
     "yahoo_provider",
     "signal_gate",
     "trendpulse_runtime",
+    "trendpulse_service",
 ]
