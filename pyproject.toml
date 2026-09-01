@@ -4,18 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "multibot2"
-version = "0.1.0"
-description = "Mavis Trading Bot"
+version = "1.0.0"
+description = "Mavis MULTIBOT2 paper-trading bot"
 requires-python = ">=3.11"
-dependencies = [
-    "pandas>=2.2,<3",
-    "yfinance>=0.2.50,<1",
-]
+dependencies = ["pandas>=2.2,<3", "yfinance>=0.2.50,<1"]
 
 [project.optional-dependencies]
-test = [
-    "pytest>=8,<9",
-]
+test = ["pytest>=8,<9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -23,18 +18,4 @@ python_files = ["test_*.py"]
 addopts = "-q"
 
 [tool.setuptools]
-py-modules = [
-    "main",
-    "config",
-    "market_data",
-    "candles",
-    "strategies",
-    "trading",
-    "telegram",
-    "backtest",
-    "dashboard",
-    "yahoo_provider",
-    "signal_gate",
-    "trendpulse_runtime",
-    "trendpulse_service",
-]
+py-modules = ["main","config","market_data","candles","strategies","trading","telegram","backtest","dashboard","yahoo_provider","signal_gate","trendpulse_runtime","trendpulse_service","sweep_service","reminders","db"]
