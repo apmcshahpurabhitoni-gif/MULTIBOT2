@@ -1,54 +1,173 @@
-"""Central configuration for MULTIBOT2."""
+"""Central configuration for MULTIBOT2.
+
+All frozen project-level rules belong here.
+
+Secrets are never hard-coded.
+Telegram credentials are loaded from environment variables.
+"""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 
+
+# ============================================================
+# CORE MARKET RULES
+# ============================================================
+
 IST_TIMEZONE = "Asia/Kolkata"
 
-# These are deliberately configuration boundaries, not strategy assumptions.
 DEFAULT_TIMEFRAME = "1h"
-DEFAULT_FRESHNESS_HOURS = 1
 
+SIGNAL_FRESHNESS_HOURS = 1
+
+NSE_MARKET_OPEN = "09:15"
+NSE_MARKET_CLOSE = "15:30"
+
+
+# ============================================================
+# HARD-CODED NSE-15 UNIVERSE
+#
+# This list is intentionally fixed.
+# It must NOT be automatically refreshed.
+# ============================================================
+
+NSE_15_SYMBOLS: tuple[str, ...] = (
+    "RELIANCE",
+    "BHARTIARTL",
+    "HDFCBANK",
+    "ICICIBANK",
+    "SBIN",
+    "TCS",
+    "BAJFINANCE",
+    "LT",
+    "LICI",
+    "SUNPHARMA",
+    "HINDUNILVR",
+    "INFY",
+    "TITAN",
+    "MARUTI",
+    "KOTAKBANK",
+)
+
+
+# ============================================================
+# PAPER-TRADING RULES
+# ============================================================
+
+ACCOUNT_SIZE_INR = 100_000
+
+RISK_PER_TRADE_INR = 2_000
+
+MAX_TRADES_PER_DAY = 3
+
+MAX_DAILY_PLANNED_RISK_INR = (
+    RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY
+)
+
+LEVERAGE = 1.0
+
+
+# ============================================================
+# ACCOUNT IDENTIFIERS
+#
+# These are the four logical accounts recovered from the
+# original project. Credentials/configuration remain external.
+# ============================================================
+
+ACCOUNT_NAMES: tuple[str, ...] = (
+    "macro",
+    "nifty",
+    "ny_session",
+    "sweep_4h",
+)
+
+
+# ============================================================
+# ENVIRONMENT CONFIGURATION
+# ============================================================
 
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings loaded from environment variables."""
 
     timezone: str = IST_TIMEZONE
+
     timeframe: str = DEFAULT_TIMEFRAME
-    freshness_hours: int = DEFAULT_FRESHNESS_HOURS
+
+    freshness_hours: int = SIGNAL_FRESHNESS_HOURS
 
     market_data_provider: str | None = None
 
     telegram_bot_token: str | None = None
+
     telegram_chat_id: str | None = None
 
     dashboard_api_url: str = "/api/dashboard"
 
     @classmethod
     def from_env(cls) -> "Settings":
+        """Load runtime settings from environment variables."""
+
         freshness = os.getenv(
             "FRESHNESS_HOURS",
-            str(DEFAULT_FRESHNESS_HOURS),
+            str(SIGNAL_FRESHNESS_HOURS),
         )
 
         try:
             freshness_hours = int(freshness)
+
         except ValueError as exc:
-            raise ValueError("FRESHNESS_HOURS must be an integer") from exc
+
+            raise ValueError(
+                "FRESHNESS_HOURS must be an integer"
+            ) from exc
 
         if freshness_hours <= 0:
-            raise ValueError("FRESHNESS_HOURS must be greater than zero")
+            raise ValueError(
+                "FRESHNESS_HOURS must be greater than zero"
+            )
+
+        timezone = os.getenv(
+            "TIMEZONE",
+            IST_TIMEZONE,
+        )
+
+        if timezone != IST_TIMEZONE:
+            raise ValueError(
+                "TIMEZONE must be Asia/Kolkata"
+            )
+
+        timeframe = os.getenv(
+            "TIMEFRAME",
+            DEFAULT_TIMEFRAME,
+        )
+
+        if timeframe != DEFAULT_TIMEFRAME:
+            raise ValueError(
+                "TIMEFRAME must be 1h"
+            )
 
         return cls(
-            timezone=os.getenv("TIMEZONE", IST_TIMEZONE),
-            timeframe=os.getenv("TIMEFRAME", DEFAULT_TIMEFRAME),
+            timezone=timezone,
+
+            timeframe=timeframe,
+
             freshness_hours=freshness_hours,
-            market_data_provider=os.getenv("MARKET_DATA_PROVIDER"),
-            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
-            telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID"),
+
+            market_data_provider=os.getenv(
+                "MARKET_DATA_PROVIDER"
+            ),
+
+            telegram_bot_token=os.getenv(
+                "TELEGRAM_BOT_TOKEN"
+            ),
+
+            telegram_chat_id=os.getenv(
+                "TELEGRAM_CHAT_ID"
+            ),
+
             dashboard_api_url=os.getenv(
                 "DASHBOARD_API_URL",
                 "/api/dashboard",
@@ -57,3 +176,54 @@ class Settings:
 
 
 settings = Settings.from_env()
+
+
+# ============================================================
+# VALIDATION
+# ============================================================
+
+def validate_configuration() -> None:
+    """Validate all frozen configuration rules."""
+
+    if len(NSE_15_SYMBOLS) != 15:
+        raise ValueError(
+            "NSE universe must contain exactly 15 symbols"
+        )
+
+    if len(set(NSE_15_SYMBOLS)) != 15:
+        raise ValueError(
+            "NSE universe contains duplicate symbols"
+        )
+
+    if ACCOUNT_SIZE_INR <= 0:
+        raise ValueError(
+            "Account size must be positive"
+        )
+
+    if RISK_PER_TRADE_INR <= 0:
+        raise ValueError(
+            "Risk per trade must be positive"
+        )
+
+    if MAX_TRADES_PER_DAY <= 0:
+        raise ValueError(
+            "Maximum trades per day must be positive"
+        )
+
+    if LEVERAGE != 1.0:
+        raise ValueError(
+            "MULTIBOT2 uses 1x / no leverage"
+        )
+
+    expected_daily_risk = (
+        RISK_PER_TRADE_INR *
+        MAX_TRADES_PER_DAY
+    )
+
+    if MAX_DAILY_PLANNED_RISK_INR != expected_daily_risk:
+        raise ValueError(
+            "Daily risk configuration is inconsistent"
+        )
+
+
+validate_configuration()
