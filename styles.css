@@ -2,74 +2,54 @@
     --bg: #f5f6f3;
     --surface: #ffffff;
     --surface-2: #f0f2ee;
-
     --text: #17191b;
     --muted: #737980;
-
     --line: rgba(23, 25, 27, 0.10);
-
     --accent: #111827;
-
     --positive: #087f55;
     --negative: #c62828;
     --warning: #a05b00;
-
     --radius: 14px;
     --border: 1px;
-
-    --shadow:
-        0 8px 28px rgba(15, 23, 42, 0.07);
+    --shadow: 0 8px 28px rgba(15, 23, 42, 0.07);
 }
 
 html[data-theme="dark"] {
     --bg: #0b1016;
     --surface: #121922;
     --surface-2: #1a2430;
-
     --text: #f4f6f8;
     --muted: #9ca6b2;
-
     --line: rgba(255, 255, 255, 0.12);
-
     --accent: #f4f6f8;
-
-    --shadow:
-        0 12px 30px rgba(0, 0, 0, 0.35);
+    --positive: #35c995;
+    --negative: #ff6b6b;
+    --warning: #ffb454;
+    --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
 }
 
 html[data-style="neo"] {
     --bg: #f4efe3;
     --surface: #fffaf0;
     --surface-2: #e9e1cf;
-
     --text: #111111;
     --muted: #656565;
-
     --line: #111111;
-
     --accent: #111111;
-
     --radius: 8px;
     --border: 2px;
-
-    --shadow:
-        5px 5px 0 #111111;
+    --shadow: 5px 5px 0 #111111;
 }
 
 html[data-theme="dark"][data-style="neo"] {
     --bg: #0d0f12;
     --surface: #171a1f;
     --surface-2: #23272e;
-
     --text: #f5f5f0;
     --muted: #aeb3bd;
-
     --line: #f5f5f0;
-
     --accent: #f5f5f0;
-
-    --shadow:
-        5px 5px 0 #000000;
+    --shadow: 5px 5px 0 #000000;
 }
 
 
@@ -87,7 +67,6 @@ html {
 
 body {
     margin: 0;
-
     min-height: 100%;
 
     background: var(--bg);
@@ -120,7 +99,6 @@ button:focus-visible {
 
 .app {
     width: min(1120px, 100%);
-
     margin: 0 auto;
 
     padding:
@@ -136,13 +114,10 @@ button:focus-visible {
 
 .topbar {
     display: flex;
-
     align-items: center;
-
     gap: 10px;
 
     padding: 10px;
-
     margin-bottom: 8px;
 
     background: var(--surface);
@@ -159,13 +134,10 @@ button:focus-visible {
 
 .brand {
     display: flex;
-
     align-items: center;
-
     gap: 9px;
 
     flex: 1;
-
     min-width: 0;
 }
 
@@ -179,9 +151,7 @@ button:focus-visible {
     flex: 0 0 auto;
 
     background: var(--accent);
-
-    color:
-        var(--surface);
+    color: var(--surface);
 
     border:
         var(--border)
@@ -191,15 +161,12 @@ button:focus-visible {
     border-radius: 9px;
 
     font-size: 17px;
-
     font-weight: 950;
 }
 
 .brand-copy {
     display: flex;
-
     flex-direction: column;
-
     gap: 1px;
 
     min-width: 0;
@@ -209,9 +176,7 @@ button:focus-visible {
     font-size: 14px;
 
     white-space: nowrap;
-
     overflow: hidden;
-
     text-overflow: ellipsis;
 }
 
@@ -221,21 +186,17 @@ button:focus-visible {
     color: var(--muted);
 
     letter-spacing: 0.08em;
-
     font-weight: 800;
 }
 
 .system-status {
     display: flex;
-
     align-items: center;
-
     gap: 5px;
 
     color: var(--positive);
 
     font-size: 8px;
-
     font-weight: 950;
 }
 
@@ -255,7 +216,6 @@ button:focus-visible {
         var(--line);
 
     background: var(--surface-2);
-
     color: var(--text);
 
     border-radius: 8px;
@@ -275,9 +235,7 @@ button:focus-visible {
 
 .style-controls {
     display: flex;
-
     flex-wrap: wrap;
-
     gap: 5px;
 
     margin-bottom: 8px;
@@ -290,7 +248,6 @@ button:focus-visible {
         var(--line);
 
     background: var(--surface-2);
-
     color: var(--text);
 
     padding:
@@ -300,7 +257,6 @@ button:focus-visible {
     border-radius: 8px;
 
     font-size: 8px;
-
     font-weight: 850;
 
     cursor: pointer;
@@ -308,7 +264,6 @@ button:focus-visible {
 
 .style-button.active {
     background: var(--accent);
-
     color: var(--surface);
 }
 
@@ -326,7 +281,6 @@ button:focus-visible {
     gap: 4px;
 
     padding: 4px;
-
     margin-bottom: 10px;
 
     background: var(--surface);
@@ -345,7 +299,6 @@ button:focus-visible {
     border: 0;
 
     background: transparent;
-
     color: var(--muted);
 
     padding:
@@ -357,13 +310,11 @@ button:focus-visible {
     cursor: pointer;
 
     font-size: 9px;
-
     font-weight: 900;
 }
 
 .nav-button.active {
     background: var(--accent);
-
     color: var(--surface);
 }
 
@@ -382,9 +333,7 @@ button:focus-visible {
 
 .page-heading {
     display: flex;
-
     align-items: flex-start;
-
     justify-content: space-between;
 
     gap: 15px;
@@ -403,7 +352,6 @@ button:focus-visible {
     color: var(--muted);
 
     font-size: 8px;
-
     font-weight: 950;
 
     letter-spacing: 0.12em;
@@ -413,7 +361,6 @@ button:focus-visible {
     margin: 0;
 
     font-size: 23px;
-
     line-height: 1.05;
 
     letter-spacing: -0.03em;
@@ -428,15 +375,12 @@ button:focus-visible {
     color: var(--muted);
 
     font-size: 10px;
-
     line-height: 1.4;
 }
 
 .market-clock {
     display: flex;
-
     flex-direction: column;
-
     align-items: flex-end;
 
     gap: 2px;
@@ -444,7 +388,6 @@ button:focus-visible {
     color: var(--muted);
 
     font-size: 8px;
-
     font-weight: 800;
 }
 
@@ -507,7 +450,6 @@ button:focus-visible {
     margin-top: 4px;
 
     font-size: 18px;
-
     line-height: 1;
 
     font-weight: 950;
@@ -541,7 +483,6 @@ button:focus-visible {
     display: flex;
 
     align-items: center;
-
     justify-content: space-between;
 
     gap: 8px;
@@ -556,7 +497,6 @@ button:focus-visible {
     margin: 0;
 
     font-size: 12px;
-
     font-weight: 950;
 }
 
@@ -574,13 +514,11 @@ button:focus-visible {
     border: 0;
 
     background: transparent;
-
     color: var(--text);
 
     cursor: pointer;
 
     font-size: 8px;
-
     font-weight: 950;
 }
 
@@ -612,7 +550,6 @@ button:focus-visible {
     color: var(--muted);
 
     font-size: 9px;
-
     line-height: 1.5;
 }
 
@@ -623,7 +560,6 @@ button:focus-visible {
 
 .signal-legend {
     display: flex;
-
     flex-wrap: wrap;
 
     gap: 5px;
@@ -644,7 +580,6 @@ button:focus-visible {
     border-radius: 99px;
 
     font-size: 7px;
-
     font-weight: 950;
 }
 
@@ -687,7 +622,6 @@ button:focus-visible {
     display: flex;
 
     align-items: center;
-
     justify-content: space-between;
 
     gap: 10px;
@@ -699,7 +633,6 @@ button:focus-visible {
 
 .signal-strategy {
     font-size: 11px;
-
     font-weight: 950;
 }
 
@@ -726,7 +659,6 @@ button:focus-visible {
     border-radius: 8px;
 
     font-size: 9px;
-
     font-weight: 1000;
 
     letter-spacing: 0.03em;
@@ -799,7 +731,6 @@ button:focus-visible {
     border-radius: 99px;
 
     font-size: 7px;
-
     font-weight: 950;
 }
 
@@ -839,7 +770,6 @@ button:focus-visible {
     display: flex;
 
     justify-content: space-between;
-
     align-items: center;
 
     gap: 8px;
@@ -847,7 +777,6 @@ button:focus-visible {
 
 .trade-title {
     font-size: 11px;
-
     font-weight: 950;
 }
 
@@ -864,7 +793,6 @@ button:focus-visible {
     border-radius: 99px;
 
     font-size: 7px;
-
     font-weight: 950;
 }
 
@@ -911,6 +839,52 @@ button:focus-visible {
 
 
 /* =========================================================
+   FIXED NSE-15 UNIVERSE
+   ========================================================= */
+
+.universe-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(5, 1fr);
+
+    gap: 6px;
+}
+
+.universe-grid span {
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    min-height: 34px;
+
+    padding:
+        7px
+        5px;
+
+    background: var(--surface-2);
+
+    border:
+        var(--border)
+        solid
+        var(--line);
+
+    border-radius: 8px;
+
+    color: var(--text);
+
+    font-size: 8px;
+
+    font-weight: 950;
+
+    text-align: center;
+
+    overflow-wrap: anywhere;
+}
+
+
+/* =========================================================
    SCHEDULE
    ========================================================= */
 
@@ -938,7 +912,6 @@ button:focus-visible {
     border-radius: 8px;
 
     font-size: 8px;
-
     font-weight: 950;
 }
 
@@ -989,7 +962,6 @@ button:focus-visible {
     border-radius: 7px;
 
     font-size: 10px;
-
     font-weight: 1000;
 }
 
@@ -1003,7 +975,6 @@ button:focus-visible {
 
 .rule-item strong {
     font-size: 9px;
-
     font-weight: 1000;
 }
 
@@ -1025,7 +996,9 @@ button:focus-visible {
 .rule-row {
     display: grid;
 
-    grid-template-columns: 80px 1fr;
+    grid-template-columns:
+        80px
+        1fr;
 
     gap: 8px;
 
@@ -1083,19 +1056,6 @@ button:focus-visible {
 
 
 /* =========================================================
-   EQUITY
-   ========================================================= */
-
-.equity-panel {
-    min-height: 100px;
-
-    display: grid;
-
-    place-items: center;
-}
-
-
-/* =========================================================
    FOOTER
    ========================================================= */
 
@@ -1148,6 +1108,10 @@ button:focus-visible {
             repeat(2, 1fr);
     }
 
+    .universe-grid {
+        grid-template-columns:
+            repeat(3, 1fr);
+    }
 }
 
 
@@ -1206,7 +1170,6 @@ button:focus-visible {
         border: 0;
 
         background: transparent;
-
         color: var(--muted);
 
         border-radius: 10px;
@@ -1218,7 +1181,6 @@ button:focus-visible {
         cursor: pointer;
 
         font-size: 7px;
-
         font-weight: 900;
     }
 
@@ -1232,7 +1194,6 @@ button:focus-visible {
 
     .mobile-nav-button.active {
         background: var(--accent);
-
         color: var(--surface);
     }
 
@@ -1261,6 +1222,10 @@ button:focus-visible {
             repeat(3, 1fr);
     }
 
+    .universe-grid {
+        grid-template-columns:
+            repeat(3, 1fr);
+    }
 }
 
 
@@ -1296,9 +1261,14 @@ button:focus-visible {
 
     .rule-row {
         grid-template-columns:
-            65px 1fr;
+            65px
+            1fr;
     }
 
+    .universe-grid {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
 }
 
 
@@ -1317,5 +1287,4 @@ button:focus-visible {
 
         animation: none !important;
     }
-
 }
