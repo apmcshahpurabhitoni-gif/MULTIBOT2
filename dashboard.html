@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en" data-theme="light" data-style="modern">
+
 <head>
     <meta charset="utf-8">
 
@@ -10,10 +11,10 @@
 
     <meta
         name="theme-color"
-        content="#f7f7f4"
+        content="#f5f6f3"
     >
 
-    <title>Mavis Trading Bot</title>
+    <title>MULTIBOT2 Trading Dashboard</title>
 
     <link
         rel="stylesheet"
@@ -25,9 +26,9 @@
 
 <div class="app">
 
-    <!-- =========================================================
+    <!-- =====================================================
          HEADER
-         ========================================================= -->
+         ===================================================== -->
 
     <header class="topbar">
 
@@ -51,6 +52,7 @@
 
         </div>
 
+
         <div class="system-status">
 
             <span
@@ -59,16 +61,17 @@
             ></span>
 
             <span id="systemStatus">
-                ONLINE
+                WAITING
             </span>
 
         </div>
+
 
         <button
             id="themeToggle"
             class="icon-button"
             type="button"
-            aria-label="Toggle theme"
+            aria-label="Toggle dark mode"
         >
             ◐
         </button>
@@ -76,9 +79,9 @@
     </header>
 
 
-    <!-- =========================================================
+    <!-- =====================================================
          STYLE CONTROLS
-         ========================================================= -->
+         ===================================================== -->
 
     <section class="style-controls">
 
@@ -117,9 +120,9 @@
     </section>
 
 
-    <!-- =========================================================
+    <!-- =====================================================
          DESKTOP NAVIGATION
-         ========================================================= -->
+         ===================================================== -->
 
     <nav class="desktop-nav">
 
@@ -174,16 +177,16 @@
     </nav>
 
 
-    <!-- =========================================================
-         MAIN CONTENT
-         ========================================================= -->
+    <!-- =====================================================
+         MAIN
+         ===================================================== -->
 
     <main>
 
 
-        <!-- =====================================================
+        <!-- =================================================
              OVERVIEW
-             ===================================================== -->
+             ================================================= -->
 
         <section
             id="page-overview"
@@ -203,10 +206,14 @@
                     </h1>
 
                     <p>
-                        Live strategy monitoring and paper-trading status.
+                        NSE paper-trading system
+                        · 1H
+                        · IST
+                        · 1× leverage
                     </p>
 
                 </div>
+
 
                 <div class="market-clock">
 
@@ -223,6 +230,8 @@
             </div>
 
 
+            <!-- TOP METRICS -->
+
             <div class="metric-grid">
 
                 <article class="metric-card">
@@ -235,7 +244,7 @@
                         id="overviewSystem"
                         class="metric-value positive"
                     >
-                        ONLINE
+                        WAITING
                     </strong>
 
                 </article>
@@ -291,35 +300,82 @@
             </div>
 
 
-            <!-- Equity -->
+            <!-- RISK SUMMARY -->
 
             <div class="section-heading">
 
                 <div>
 
                     <h2>
-                        Equity
+                        Risk Controls
                     </h2>
 
                     <span>
-                        Paper account
+                        Locked paper-trading rules
                     </span>
 
                 </div>
 
             </div>
 
-            <article class="panel equity-panel">
 
-                <div class="empty-state">
-                    Equity data will appear here when the
-                    paper-trading account is configured.
-                </div>
+            <div class="metric-grid">
 
-            </article>
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Account
+                    </span>
+
+                    <strong class="metric-value">
+                        ₹1,00,000
+                    </strong>
+
+                </article>
 
 
-            <!-- Latest signals -->
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Risk / Trade
+                    </span>
+
+                    <strong class="metric-value">
+                        ₹2,000
+                    </strong>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Trades / Day
+                    </span>
+
+                    <strong class="metric-value">
+                        3
+                    </strong>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Leverage
+                    </span>
+
+                    <strong class="metric-value">
+                        1×
+                    </strong>
+
+                </article>
+
+            </div>
+
+
+            <!-- LATEST SIGNALS -->
 
             <div class="section-heading">
 
@@ -345,6 +401,7 @@
 
             </div>
 
+
             <article
                 id="overviewSignals"
                 class="panel"
@@ -357,7 +414,7 @@
             </article>
 
 
-            <!-- Open trades -->
+            <!-- OPEN TRADES -->
 
             <div class="section-heading">
 
@@ -368,7 +425,7 @@
                     </h2>
 
                     <span>
-                        Paper trades
+                        Paper positions
                     </span>
 
                 </div>
@@ -382,6 +439,7 @@
                 </button>
 
             </div>
+
 
             <article
                 id="overviewTrades"
@@ -397,10 +455,9 @@
         </section>
 
 
-
-        <!-- =====================================================
+        <!-- =================================================
              TRADES
-             ===================================================== -->
+             ================================================= -->
 
         <section
             id="page-trades"
@@ -420,8 +477,7 @@
                     </h1>
 
                     <p>
-                        Entry, stop-loss and take-profit from
-                        canonical trade plans.
+                        Entry, stop-loss and take-profit.
                     </p>
 
                 </div>
@@ -429,7 +485,7 @@
             </div>
 
 
-            <div class="trade-summary metric-grid">
+            <div class="metric-grid">
 
                 <article class="metric-card">
 
@@ -473,9 +529,14 @@
                         Active Trades
                     </h2>
 
+                    <span>
+                        1× leverage
+                    </span>
+
                 </div>
 
             </div>
+
 
             <article
                 id="tradesList"
@@ -491,10 +552,9 @@
         </section>
 
 
-
-        <!-- =====================================================
+        <!-- =================================================
              SIGNALS
-             ===================================================== -->
+             ================================================= -->
 
         <section
             id="page-signals"
@@ -514,7 +574,7 @@
                     </h1>
 
                     <p>
-                        Strategy direction and signal freshness.
+                        Direction, strategy and freshness.
                     </p>
 
                 </div>
@@ -557,10 +617,9 @@
         </section>
 
 
-
-        <!-- =====================================================
+        <!-- =================================================
              HISTORY
-             ===================================================== -->
+             ================================================= -->
 
         <section
             id="page-history"
@@ -580,7 +639,7 @@
                     </h1>
 
                     <p>
-                        Historical signals and completed paper trades.
+                        Historical signals and completed trades.
                     </p>
 
                 </div>
@@ -602,10 +661,9 @@
         </section>
 
 
-
-        <!-- =====================================================
+        <!-- =================================================
              NEWS
-             ===================================================== -->
+             ================================================= -->
 
         <section
             id="page-news"
@@ -625,8 +683,7 @@
                     </h1>
 
                     <p>
-                        Market information supplied by the configured
-                        data/news source.
+                        Market information from the configured source.
                     </p>
 
                 </div>
@@ -648,10 +705,9 @@
         </section>
 
 
-
-        <!-- =====================================================
+        <!-- =================================================
              TOOLS
-             ===================================================== -->
+             ================================================= -->
 
         <section
             id="page-tools"
@@ -671,7 +727,7 @@
                     </h1>
 
                     <p>
-                        Strategy diagnostics and backtesting.
+                        Rules, universe and diagnostics.
                     </p>
 
                 </div>
@@ -679,18 +735,18 @@
             </div>
 
 
-            <!-- Market schedule -->
+            <!-- MARKET SESSION -->
 
             <div class="section-heading">
 
                 <div>
 
                     <h2>
-                        NSE 1H Schedule
+                        NSE Session
                     </h2>
 
                     <span>
-                        IST candle boundaries
+                        Asia/Kolkata
                     </span>
 
                 </div>
@@ -708,7 +764,126 @@
             </article>
 
 
-            <!-- Freshness -->
+            <!-- FIXED UNIVERSE -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        NSE-15 Universe
+                    </h2>
+
+                    <span>
+                        Fixed universe · no automatic refresh
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel">
+
+                <div class="universe-grid">
+
+                    <span>RELIANCE</span>
+                    <span>BHARTIARTL</span>
+                    <span>HDFCBANK</span>
+                    <span>ICICIBANK</span>
+                    <span>SBIN</span>
+                    <span>TCS</span>
+                    <span>BAJFINANCE</span>
+                    <span>LT</span>
+                    <span>LICI</span>
+                    <span>SUNPHARMA</span>
+                    <span>HINDUNILVR</span>
+                    <span>INFY</span>
+                    <span>TITAN</span>
+                    <span>MARUTI</span>
+                    <span>KOTAKBANK</span>
+
+                </div>
+
+            </article>
+
+
+            <!-- RISK RULES -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Risk Rules
+                    </h2>
+
+                    <span>
+                        Frozen configuration
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel rules-list">
+
+                <div class="rule-row">
+
+                    <strong>
+                        ACCOUNT
+                    </strong>
+
+                    <span>
+                        ₹1,00,000 per account
+                    </span>
+
+                </div>
+
+
+                <div class="rule-row">
+
+                    <strong>
+                        RISK
+                    </strong>
+
+                    <span>
+                        ₹2,000 maximum planned risk per trade
+                    </span>
+
+                </div>
+
+
+                <div class="rule-row">
+
+                    <strong>
+                        DAILY
+                    </strong>
+
+                    <span>
+                        Maximum 3 trades per day
+                    </span>
+
+                </div>
+
+
+                <div class="rule-row">
+
+                    <strong>
+                        LEVERAGE
+                    </strong>
+
+                    <span>
+                        1× / no leverage
+                    </span>
+
+                </div>
+
+            </article>
+
+
+            <!-- FRESHNESS -->
 
             <div class="section-heading">
 
@@ -719,7 +894,7 @@
                     </h2>
 
                     <span>
-                        Canonical rule
+                        Canonical boundary
                     </span>
 
                 </div>
@@ -773,7 +948,7 @@
             </article>
 
 
-            <!-- Sweep -->
+            <!-- SWEEP -->
 
             <div class="section-heading">
 
@@ -784,7 +959,7 @@
                     </h2>
 
                     <span>
-                        Signal classification
+                        Canonical signal conditions
                     </span>
 
                 </div>
@@ -802,7 +977,7 @@
 
                     <span>
                         Both sides swept and close above
-                        the previous high.
+                        previous high.
                     </span>
 
                 </div>
@@ -816,7 +991,7 @@
 
                     <span>
                         Both sides swept and close below
-                        the previous low.
+                        previous low.
                     </span>
 
                 </div>
@@ -830,7 +1005,7 @@
 
                     <span>
                         Both sides swept but close remains
-                        inside the previous range.
+                        inside previous range.
                     </span>
 
                 </div>
@@ -851,7 +1026,7 @@
             </article>
 
 
-            <!-- Backtest -->
+            <!-- BACKTEST -->
 
             <div class="section-heading">
 
@@ -862,7 +1037,7 @@
                     </h2>
 
                     <span>
-                        Same strategy engine as live evaluation
+                        Shared strategy engine
                     </span>
 
                 </div>
@@ -879,8 +1054,8 @@
                     </strong>
 
                     <p>
-                        Entry, risk, fees and slippage are not
-                        invented until their rules are formally frozen.
+                        The backtester uses the same strategy
+                        functions as live evaluation.
                     </p>
 
                 </div>
@@ -892,9 +1067,9 @@
     </main>
 
 
-    <!-- =========================================================
+    <!-- =====================================================
          MOBILE NAVIGATION
-         ========================================================= -->
+         ===================================================== -->
 
     <nav class="mobile-nav">
 
@@ -961,7 +1136,7 @@
         <span>•</span>
         Paper Trading
         <span>•</span>
-        Strategy logic remains server-side
+        1× Leverage
 
     </footer>
 
