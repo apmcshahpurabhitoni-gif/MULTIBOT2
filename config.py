@@ -58,11 +58,20 @@ NSE_15_SYMBOLS: tuple[str, ...] = (
 
 ACCOUNT_SIZE_INR = 100_000
 RISK_PER_TRADE_INR = 2_000
-MAX_TRADES_PER_DAY = 3
 
-MAX_DAILY_PLANNED_RISK_INR = (
-    RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY
-)
+# Original MULTIBOT account-specific daily limits.
+# These are independent: reaching one account's limit does not
+# consume capacity in the other logical accounts.
+ACCOUNT_TRADE_LIMITS: dict[str, int] = {
+    "macro": 20,
+    "nifty": 5,
+    "ny_session": 3,
+    "sweep_4h": 3,
+}
+
+# Retained as the canonical single-trade risk amount. Daily risk
+# is evaluated per account using ACCOUNT_TRADE_LIMITS.
+MAX_TRADES_PER_DAY = 3
 
 LEVERAGE = 1.0
 
@@ -212,18 +221,19 @@ def validate_configuration() -> None:
             "Maximum trades per day must be positive"
         )
 
+    if set(ACCOUNT_TRADE_LIMITS) != set(ACCOUNT_NAMES):
+        raise ValueError(
+            "Per-account trade limits must cover all logical accounts"
+        )
+
+    if any(limit <= 0 for limit in ACCOUNT_TRADE_LIMITS.values()):
+        raise ValueError(
+            "Per-account trade limits must be positive"
+        )
+
     if LEVERAGE != 1.0:
         raise ValueError(
             "MULTIBOT2 uses 1x / no leverage"
-        )
-
-    expected_daily_risk = (
-        RISK_PER_TRADE_INR * MAX_TRADES_PER_DAY
-    )
-
-    if MAX_DAILY_PLANNED_RISK_INR != expected_daily_risk:
-        raise ValueError(
-            "Daily risk configuration is inconsistent"
         )
 
 
