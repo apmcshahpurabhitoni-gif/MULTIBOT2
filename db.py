@@ -35,7 +35,6 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS accounts(name TEXT PRIMARY KEY, starting_balance REAL NOT NULL, balance REAL NOT NULL, trades_today INTEGER NOT NULL DEFAULT 0, planned_risk_used REAL NOT NULL DEFAULT 0, reset_date TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS trades(id TEXT PRIMARY KEY, status TEXT NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY, send_count INTEGER NOT NULL DEFAULT 0, first_sent_at TEXT, last_sent_at TEXT, reminder_due_at TEXT, reminder_sent INTEGER NOT NULL DEFAULT 0, message_text TEXT, metadata TEXT);
-            CREATE TABLE IF NOT EXISTS pending_sweeps(signal_key TEXT PRIMARY KEY, payload TEXT NOT NULL, due_at TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0);
             """)
             c.commit()
 
@@ -61,10 +60,10 @@ class DatabaseManager:
         if not self.supabase_enabled:
             return
         with self._connect() as c:
-            local_has_data = any(c.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() for table in ("accounts", "trades", "signals", "pending_sweeps"))
+            local_has_data = any(c.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() for table in ("accounts", "trades", "signals"))
         if local_has_data:
             return
-        self._restore_accounts(); self._restore_trades(); self._restore_signals(); self._restore_pending_sweeps()
+        self._restore_accounts(); self._restore_trades(); self._restore_signals()
 
     def _restore_accounts(self) -> None:
         rows = self._supabase_request("GET", "accounts", params="select=*") or []
@@ -100,16 +99,6 @@ class DatabaseManager:
                 if not key: continue
                 count = int(row.get("send_count", 0) or 0)
                 c.execute("INSERT OR REPLACE INTO signals VALUES(?,?,?,?,?,?,?,?)", (key, count, None, None, None, int(count >= 2), None, "{}"))
-            c.commit()
-
-    def _restore_pending_sweeps(self) -> None:
-        rows = self._supabase_request("GET", "pending_sweeps", params="select=*") or []
-        with self._connect() as c:
-            for row in rows:
-                key = str(row.get("id", row.get("signal_key", "")))
-                if not key: continue
-                payload = dict(row); due = str(row.get("due_at", row.get("created_at", "")) or "")
-                c.execute("INSERT OR REPLACE INTO pending_sweeps VALUES(?,?,?,?)", (key, json.dumps(payload, default=str), due, 0))
             c.commit()
 
     def load_accounts(self, names: tuple[str, ...], starting_balance: float, today: str) -> dict[str, dict[str, Any]]:
@@ -160,19 +149,6 @@ class DatabaseManager:
     def mark_reminder_sent(self,key:str,sent_at:str)->None:
         with self._connect() as c:c.execute("UPDATE signals SET send_count=2,reminder_sent=1,last_sent_at=? WHERE signal_key=? AND send_count=1",(sent_at,key));c.commit()
         self._supabase_request("POST", "sent_signals", data={"sig_key":key,"send_count":2,"last_sent_ts":int(_timestamp_ms(sent_at))}, upsert=True)
-
-    def save_pending_sweep(self,key:str,payload:dict[str,Any],due_at:str)->None:
-        with self._connect() as c:c.execute("INSERT OR REPLACE INTO pending_sweeps VALUES(?,?,?,0)",(key,json.dumps(payload,default=str),due_at));c.commit()
-        data=dict(payload);data["id"]=key;data["due_at"]=due_at;data["status"]=data.get("status","pending")
-        self._supabase_request("POST", "pending_sweeps", data=data, upsert=True)
-
-    def due_pending_sweeps(self,now_iso:str)->list[dict[str,Any]]:
-        with self._connect() as c:rows=c.execute("SELECT * FROM pending_sweeps WHERE sent=0 AND due_at<=?",(now_iso,)).fetchall()
-        return [{"signal_key":r["signal_key"],"payload":json.loads(r["payload"]),"due_at":r["due_at"]} for r in rows]
-
-    def mark_pending_sweep_sent(self,key:str)->None:
-        with self._connect() as c:c.execute("UPDATE pending_sweeps SET sent=1 WHERE signal_key=?",(key,));c.commit()
-        self._supabase_request("DELETE", "pending_sweeps", params=parse.urlencode({"id":f"eq.{key}"}))
 
 def _timestamp_ms(value: str) -> float:
     try: return datetime.fromisoformat(value.replace("Z","+00:00")).timestamp()*1000
