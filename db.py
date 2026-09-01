@@ -1,4 +1,4 @@
-"""Authoritative persistence: fast local SQLite cache plus Supabase cloud durability."""
+"""Authoritative persistence: local SQLite cache plus Supabase production durability."""
 from __future__ import annotations
 import json, os, sqlite3
 from datetime import datetime, timezone
@@ -75,7 +75,8 @@ class DatabaseManager:
                 balance = float(row.get("balance", starting) or starting)
                 trades = int(row.get("daily_trades", row.get("trades_today", 0)) or 0)
                 reset = str(row.get("last_reset_date", row.get("reset_date", "")) or "")
-                c.execute("INSERT OR REPLACE INTO accounts VALUES(?,?,?,?,?,?)", (name, starting, balance, trades, float(row.get("planned_risk_used", 0) or 0), reset))
+                planned = float(row.get("planned_risk_used", 0) or 0)
+                c.execute("INSERT OR REPLACE INTO accounts VALUES(?,?,?,?,?,?)", (name, starting, balance, trades, planned, reset))
             c.commit()
 
     def _restore_trades(self) -> None:
@@ -85,7 +86,7 @@ class DatabaseManager:
                 for row in rows:
                     trade_id = str(row.get("id", ""))
                     if not trade_id: continue
-                    payload = {"id": trade_id, "status": status, "symbol": row.get("symbol", ""), "market": row.get("market", "NSE"), "account": row.get("account", "MACRO"), "strategy": row.get("strat", row.get("strategy", "")), "type": row.get("type", "LONG"), "entry": float(row.get("entry", 0) or 0), "sl": float(row.get("sl", 0) or 0), "tp": float(row.get("tp", 0) or 0), "qty": float(row.get("qty", 0) or 0), "trail_sl": float(row.get("trail_sl", row.get("sl", 0)) or 0), "signal_ts": row.get("ts_trigger", 0), "opened_at": row.get("opened_at", ""), "time": row.get("time_str", row.get("time", ""))}
+                    payload = {"id": trade_id, "status": status, "symbol": row.get("symbol", ""), "market": row.get("market", "NSE"), "account": row.get("account", ""), "strategy": row.get("strat", row.get("strategy", "")), "type": row.get("type", "LONG"), "entry": float(row.get("entry", 0) or 0), "sl": float(row.get("sl", 0) or 0), "tp": float(row.get("tp", 0) or 0), "qty": float(row.get("qty", 0) or 0), "trail_sl": float(row.get("trail_sl", row.get("sl", 0)) or 0), "signal_ts": row.get("ts_trigger", 0), "opened_at": row.get("opened_at", ""), "time": row.get("time_str", row.get("time", ""))}
                     if status == "CLOSED": payload.update({"exit_price": float(row.get("exit_price", 0) or 0), "pnl": float(row.get("pnl", 0) or 0), "result": row.get("result", ""), "exit_reason": row.get("exit_reason", ""), "closed_at": row.get("closed_at", row.get("close_time", ""))})
                     updated = payload.get("closed_at") or payload.get("opened_at") or datetime.now(timezone.utc).isoformat()
                     c.execute("INSERT OR REPLACE INTO trades VALUES(?,?,?,?)", (trade_id, status, json.dumps(payload, default=str), str(updated)))
@@ -97,8 +98,13 @@ class DatabaseManager:
             for row in rows:
                 key = str(row.get("sig_key", row.get("signal_key", "")))
                 if not key: continue
-                count = int(row.get("send_count", 0) or 0)
-                c.execute("INSERT OR REPLACE INTO signals VALUES(?,?,?,?,?,?,?,?)", (key, count, None, None, None, int(count >= 2), None, "{}"))
+                count = min(int(row.get("send_count", 0) or 0), 2)
+                last_ts = row.get("last_sent_ts")
+                last_sent = None
+                if last_ts is not None:
+                    try: last_sent = datetime.fromtimestamp(float(last_ts) / 1000, timezone.utc).isoformat()
+                    except (TypeError, ValueError, OverflowError): pass
+                c.execute("INSERT OR REPLACE INTO signals VALUES(?,?,?,?,?,?,?,?)", (key, count, last_sent, last_sent, None, int(count >= 2), None, "{}"))
             c.commit()
 
     def load_accounts(self, names: tuple[str, ...], starting_balance: float, today: str) -> dict[str, dict[str, Any]]:
@@ -112,7 +118,7 @@ class DatabaseManager:
 
     def save_account(self, name: str, *, balance: float, trades_today: int, planned_risk_used: float, reset_date: str) -> None:
         with self._connect() as c: c.execute("UPDATE accounts SET balance=?,trades_today=?,planned_risk_used=?,reset_date=? WHERE name=?", (balance, trades_today, planned_risk_used, reset_date, name)); c.commit()
-        self._supabase_request("POST", "accounts", data={"name": name, "balance": balance, "daily_trades": trades_today, "last_reset_date": reset_date}, upsert=True)
+        self._supabase_request("POST", "accounts", data={"name": name, "starting_balance": 100000.0, "balance": balance, "daily_trades": trades_today, "trades_today": trades_today, "planned_risk_used": planned_risk_used, "last_reset_date": reset_date, "reset_date": reset_date}, upsert=True)
 
     def save_trade(self, trade_id: str, status: str, payload: dict[str, Any], updated_at: str) -> None:
         with self._connect() as c: c.execute("INSERT INTO trades VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,payload=excluded.payload,updated_at=excluded.updated_at", (trade_id, status, json.dumps(payload, default=str), updated_at)); c.commit()
