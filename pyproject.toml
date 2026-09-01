@@ -35,4 +35,5 @@ py-modules = [
     "dashboard",
     "yahoo_provider",
     "signal_gate",
+    "trendpulse_runtime",
 ]
