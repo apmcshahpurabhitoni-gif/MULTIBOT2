@@ -1,8 +1,10 @@
-"""MULTIBOT2 application entry point."""
+"""MULTIBOT2 application entry point and TrendPulse runtime boundary."""
 
 from __future__ import annotations
 
 import logging
+
+import pandas as pd
 
 from config import (
     DEFAULT_TIMEFRAME,
@@ -11,6 +13,7 @@ from config import (
     settings,
     validate_configuration,
 )
+from trendpulse_service import TrendPulseDispatchResult, TrendPulseService
 from yahoo_provider import YahooProvider
 
 
@@ -59,8 +62,41 @@ def build_market_data_provider() -> YahooProvider:
     return YahooProvider()
 
 
+def build_trendpulse_service() -> TrendPulseService:
+    """Build the canonical TrendPulse -> paper trade -> Telegram service."""
+    validate_runtime_configuration()
+    return TrendPulseService()
+
+
+def run_trendpulse_cycle(
+    *,
+    now: pd.Timestamp | None = None,
+    period: str = "5d",
+    send: bool = True,
+) -> list[TrendPulseDispatchResult]:
+    """Run one complete TrendPulse scan/dispatch cycle.
+
+    ``send=True`` is the production path. Tests and diagnostics can use
+    ``send=False`` to render and validate messages without contacting Telegram.
+    """
+    service = build_trendpulse_service()
+    results = service.scan_universe_and_dispatch(
+        now=now,
+        period=period,
+        send=send,
+    )
+
+    sent = sum(result.sent for result in results)
+    logger.info(
+        "TrendPulse cycle complete: %d symbols, %d Telegram messages sent",
+        len(results),
+        sent,
+    )
+    return results
+
+
 def main() -> None:
-    """Start the MULTIBOT2 application."""
+    """Validate and initialize MULTIBOT2 without automatically sending signals."""
 
     validate_runtime_configuration()
 
@@ -79,14 +115,11 @@ def main() -> None:
         "Signal freshness: %s hour",
         settings.freshness_hours,
     )
-    logger.info(
-        "Market-data provider: Yahoo Finance"
-    )
+    logger.info("Market-data provider: Yahoo Finance")
     logger.info(
         "Yahoo provider initialized: %s",
         type(market_data_provider).__name__,
     )
-
     logger.info(
         "Telegram: %s",
         "CONFIGURED"
@@ -94,10 +127,7 @@ def main() -> None:
         and settings.telegram_chat_id
         else "NOT_CONFIGURED",
     )
-
-    logger.info(
-        "MULTIBOT2 runtime initialized"
-    )
+    logger.info("MULTIBOT2 runtime initialized")
 
 
 if __name__ == "__main__":
