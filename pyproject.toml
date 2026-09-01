@@ -34,4 +34,5 @@ py-modules = [
     "backtest",
     "dashboard",
     "yahoo_provider",
+    "signal_gate",
 ]
