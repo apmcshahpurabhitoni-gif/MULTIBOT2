@@ -1,385 +1,75 @@
-"""Paper-trading and risk rules for MULTIBOT2."""
-
+"""Canonical paper-trading, sizing, and account-risk rules."""
 from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Literal
-
 import pandas as pd
-
-from config import (
-    ACCOUNT_SIZE_INR,
-    ACCOUNT_TRADE_LIMITS,
-    LEVERAGE,
-    RISK_PER_TRADE_INR,
-)
-from strategies import StrategySignal
-
-
-TradeSide = Literal["BUY", "SELL"]
-TradeStatus = Literal["OPEN", "CLOSED"]
-
-
-class TradingRuleError(ValueError):
-    """Raised when a paper-trading rule is violated."""
-
-
+from config import ACCOUNT_SIZE_INR,ACCOUNT_TRADE_LIMITS,LEVERAGE,RISK_PER_TRADE_INR,SIGNAL_FRESHNESS_HOURS
+TradeSide=Literal["BUY","SELL"];TradeStatus=Literal["OPEN","CLOSED"]
+class TradingRuleError(ValueError):pass
 @dataclass(frozen=True)
 class TradePlan:
-    """Canonical paper-trade plan."""
-
-    strategy: str
-    side: TradeSide
-    signal_timestamp: pd.Timestamp
-
-    entry: float
-    stop_loss: float
-    take_profit: float
-
+    strategy:str;side:TradeSide;signal_timestamp:pd.Timestamp;entry:float;stop_loss:float;take_profit:float
     @property
-    def risk_per_unit(self) -> float:
-        return abs(
-            self.entry - self.stop_loss
-        )
-
-
+    def risk_per_unit(self):return abs(self.entry-self.stop_loss)
+    @property
+    def reward_per_unit(self):return abs(self.take_profit-self.entry)
 @dataclass(frozen=True)
 class PaperTrade:
-    """Canonical paper trade."""
-
-    plan: TradePlan
-
-    status: TradeStatus = "OPEN"
-
-    exit_price: float | None = None
-    exit_timestamp: pd.Timestamp | None = None
-    exit_reason: str | None = None
-
-
+    plan:TradePlan;account:str="nifty";quantity:float=0.0;status:TradeStatus="OPEN";exit_price:float|None=None;exit_timestamp:pd.Timestamp|None=None;exit_reason:str|None=None
+    @property
+    def planned_risk(self):return self.plan.risk_per_unit*self.quantity
 @dataclass(frozen=True)
 class AccountState:
-    """Paper-account state."""
-
-    name: str
-    starting_balance: float = ACCOUNT_SIZE_INR
-    planned_risk_used: float = 0.0
-    trades_today: int = 0
-
+    name:str;starting_balance:float=ACCOUNT_SIZE_INR;balance:float=ACCOUNT_SIZE_INR;planned_risk_used:float=0.0;trades_today:int=0
     @property
-    def daily_trade_limit(self) -> int:
-        """Return the original daily limit for this logical account."""
-        try:
-            return ACCOUNT_TRADE_LIMITS[self.name.lower()]
-        except KeyError as exc:
-            raise TradingRuleError(
-                f"Unknown trading account: {self.name}"
-            ) from exc
-
+    def daily_trade_limit(self):
+        try:return int(ACCOUNT_TRADE_LIMITS[self.name.lower()])
+        except KeyError as exc:raise TradingRuleError(f"Unknown trading account: {self.name}") from exc
     @property
-    def max_daily_planned_risk(self) -> float:
-        """Return this account's total planned-risk allowance."""
-        return RISK_PER_TRADE_INR * self.daily_trade_limit
-
-
-
-def validate_risk_configuration() -> None:
-    """Validate the frozen risk and original account-limit rules."""
-
-    if ACCOUNT_SIZE_INR != 100_000:
-        raise TradingRuleError(
-            "Account size must be ₹100,000"
-        )
-
-    if RISK_PER_TRADE_INR != 2_000:
-        raise TradingRuleError(
-            "Risk per trade must be ₹2,000"
-        )
-
-    expected_limits = {
-        "macro": 20,
-        "nifty": 5,
-        "ny_session": 3,
-        "sweep_4h": 3,
-    }
-    if ACCOUNT_TRADE_LIMITS != expected_limits:
-        raise TradingRuleError(
-            "Per-account trade limits do not match the original MULTIBOT rules"
-        )
-
-    if LEVERAGE != 1.0:
-        raise TradingRuleError(
-            "MULTIBOT2 uses 1x leverage"
-        )
-
-
-
-def signal_freshness(
-    signal_timestamp: pd.Timestamp,
-    now: pd.Timestamp,
-    *,
-    freshness_hours: int = 1,
-) -> Literal["FRESH", "STALE"]:
-    """Classify signal freshness.
-
-    A signal is FRESH when its age is <= 1 hour.
-    """
-
-    signal_timestamp = pd.Timestamp(
-        signal_timestamp
-    )
-
-    now = pd.Timestamp(now)
-
-    if signal_timestamp.tzinfo is None:
-        raise TradingRuleError(
-            "Signal timestamp must be timezone-aware"
-        )
-
-    if now.tzinfo is None:
-        raise TradingRuleError(
-            "Current timestamp must be timezone-aware"
-        )
-
-    if freshness_hours <= 0:
-        raise TradingRuleError(
-            "Freshness period must be positive"
-        )
-
-    signal_timestamp = signal_timestamp.tz_convert(
-        "Asia/Kolkata"
-    )
-
-    now = now.tz_convert(
-        "Asia/Kolkata"
-    )
-
-    age = now - signal_timestamp
-
-    if age < timedelta(0):
-        raise TradingRuleError(
-            "Signal timestamp cannot be in the future"
-        )
-
-    if age <= timedelta(
-        hours=freshness_hours
-    ):
-        return "FRESH"
-
-    return "STALE"
-
-
-
-def can_open_trade(
-    account: AccountState,
-) -> bool:
-    """Return whether another trade may be opened today for this account.
-
-    The original bot used independent account limits:
-    Macro=20, Nifty=5, NY Session=3, Sweep 4H=3.
-    """
-
+    def max_daily_planned_risk(self):return RISK_PER_TRADE_INR*self.daily_trade_limit
+    @property
+    def remaining_trades(self):return max(0,self.daily_trade_limit-self.trades_today)
+    @property
+    def remaining_planned_risk(self):return max(0.0,self.max_daily_planned_risk-self.planned_risk_used)
+def validate_risk_configuration():
+    if ACCOUNT_SIZE_INR!=100_000:raise TradingRuleError("Account size must be ₹100,000")
+    if RISK_PER_TRADE_INR!=2_000:raise TradingRuleError("Risk per trade must be ₹2,000")
+    if ACCOUNT_TRADE_LIMITS!={"macro":20,"nifty":5,"ny_session":3,"sweep_4h":3}:raise TradingRuleError("Per-account trade limits are incorrect")
+    if LEVERAGE!=1.0:raise TradingRuleError("MULTIBOT2 uses 1x leverage")
+def signal_freshness(signal_timestamp,now,*,freshness_hours=SIGNAL_FRESHNESS_HOURS):
+    ts=pd.Timestamp(signal_timestamp);current=pd.Timestamp(now)
+    if ts.tzinfo is None or current.tzinfo is None:raise TradingRuleError("Signal and current timestamps must be timezone-aware")
+    if freshness_hours!=SIGNAL_FRESHNESS_HOURS:raise TradingRuleError("Freshness is locked at one hour")
+    age=current.tz_convert("Asia/Kolkata")-ts.tz_convert("Asia/Kolkata")
+    if age<timedelta(0):raise TradingRuleError("Signal timestamp cannot be in the future")
+    return "FRESH" if age<=timedelta(hours=1) else "STALE"
+def can_open_trade(account):
+    validate_risk_configuration();return account.trades_today<account.daily_trade_limit and account.planned_risk_used+RISK_PER_TRADE_INR<=account.max_daily_planned_risk
+def register_trade(account,*,planned_risk=RISK_PER_TRADE_INR):
+    if not can_open_trade(account):raise TradingRuleError(f"Daily trading limit reached for {account.name}")
+    if planned_risk<=0 or planned_risk>RISK_PER_TRADE_INR+1e-9:raise TradingRuleError("Trade planned risk exceeds ₹2,000")
+    return AccountState(account.name,account.starting_balance,account.balance,account.planned_risk_used+planned_risk,account.trades_today+1)
+def quantity_for_risk(entry,stop_loss,*,risk_inr=RISK_PER_TRADE_INR):
+    e,s=float(entry),float(stop_loss);risk=float(risk_inr);distance=abs(e-s)
+    if e<=0 or s<=0 or distance<=0:raise TradingRuleError("Entry and stop-loss must be positive and different")
+    if risk<=0 or risk>RISK_PER_TRADE_INR:raise TradingRuleError("Risk must be positive and no greater than ₹2,000")
+    return risk/distance
+def make_sweep_trade_plan(signal,*,entry,signal_high,signal_low):
     validate_risk_configuration()
-
-    daily_limit = account.daily_trade_limit
-
-    if account.trades_today >= daily_limit:
-        return False
-
-    if (
-        account.planned_risk_used
-        + RISK_PER_TRADE_INR
-        > account.max_daily_planned_risk
-    ):
-        return False
-
-    return True
-
-
-
-def make_sweep_trade_plan(
-    signal: StrategySignal,
-    *,
-    entry: float,
-    signal_high: float,
-    signal_low: float,
-) -> TradePlan | None:
-    """Create the Sweep V2 trade plan.
-
-    BUY:
-        SL = signal low
-        TP = Entry + 2R
-
-    SELL:
-        SL = signal high
-        TP = Entry - 2R
-
-    Position size is deliberately not calculated here because
-    execution sizing depends on the approved instrument contract.
-    """
-
-    validate_risk_configuration()
-
-    if signal.strategy != "Sweep V2":
-        raise TradingRuleError(
-            "Sweep trade plan requires Sweep V2"
-        )
-
-    if signal.signal not in {
-        "BUY",
-        "SELL",
-    }:
-        return None
-
-    entry = float(entry)
-
-    signal_high = float(
-        signal_high
-    )
-
-    signal_low = float(
-        signal_low
-    )
-
-    if entry <= 0:
-        raise TradingRuleError(
-            "Entry must be positive"
-        )
-
-    if signal_low <= 0:
-        raise TradingRuleError(
-            "Signal low must be positive"
-        )
-
-    if signal_high <= 0:
-        raise TradingRuleError(
-            "Signal high must be positive"
-        )
-
-    if signal_low >= signal_high:
-        raise TradingRuleError(
-            "Signal low must be below signal high"
-        )
-
-    if signal.signal == "BUY":
-
-        stop_loss = signal_low
-
-        risk = (
-            entry
-            - stop_loss
-        )
-
-        if risk <= 0:
-            raise TradingRuleError(
-                "BUY entry must be above stop-loss"
-            )
-
-        take_profit = (
-            entry
-            + (2 * risk)
-        )
-
-        side: TradeSide = "BUY"
-
-    else:
-
-        stop_loss = signal_high
-
-        risk = (
-            stop_loss
-            - entry
-        )
-
-        if risk <= 0:
-            raise TradingRuleError(
-                "SELL entry must be below stop-loss"
-            )
-
-        take_profit = (
-            entry
-            - (2 * risk)
-        )
-
-        side = "SELL"
-
-    return TradePlan(
-        strategy=signal.strategy,
-        side=side,
-        signal_timestamp=signal.timestamp,
-        entry=entry,
-        stop_loss=stop_loss,
-        take_profit=take_profit,
-    )
-
-
-
-def register_trade(
-    account: AccountState,
-) -> AccountState:
-    """Register one planned trade against that account's daily limits."""
-
-    if not can_open_trade(account):
-        raise TradingRuleError(
-            f"Daily trading limit reached for {account.name}"
-        )
-
-    return AccountState(
-        name=account.name,
-        starting_balance=account.starting_balance,
-        planned_risk_used=(
-            account.planned_risk_used
-            + RISK_PER_TRADE_INR
-        ),
-        trades_today=(
-            account.trades_today
-            + 1
-        ),
-    )
-
-
-
-def close_trade(
-    trade: PaperTrade,
-    *,
-    exit_price: float,
-    exit_timestamp: pd.Timestamp,
-    exit_reason: str,
-) -> PaperTrade:
-    """Return a closed copy of a paper trade."""
-
-    if trade.status == "CLOSED":
-        raise TradingRuleError(
-            "Trade is already closed"
-        )
-
-    exit_timestamp = pd.Timestamp(
-        exit_timestamp
-    )
-
-    if exit_timestamp.tzinfo is None:
-        raise TradingRuleError(
-            "Exit timestamp must be timezone-aware"
-        )
-
-    exit_price = float(exit_price)
-
-    if exit_price <= 0:
-        raise TradingRuleError(
-            "Exit price must be positive"
-        )
-
-    if not exit_reason.strip():
-        raise TradingRuleError(
-            "Exit reason cannot be empty"
-        )
-
-    return PaperTrade(
-        plan=trade.plan,
-        status="CLOSED",
-        exit_price=exit_price,
-        exit_timestamp=exit_timestamp.tz_convert(
-            "Asia/Kolkata"
-        ),
-        exit_reason=exit_reason.strip(),
-    )
+    if signal.strategy!="Sweep V2":raise TradingRuleError("Sweep trade plan requires Sweep V2")
+    if signal.signal not in ("BUY","SELL"):return None
+    entry=float(entry);high=float(signal_high);low=float(signal_low)
+    if min(entry,high,low)<=0 or low>=high:raise TradingRuleError("Invalid sweep prices")
+    if signal.signal=="BUY":sl=low;r=entry-sl;tp=entry+2*r
+    else:sl=high;r=sl-entry;tp=entry-2*r
+    if r<=0:raise TradingRuleError("Entry is on the wrong side of sweep stop")
+    return TradePlan("Sweep V2",signal.signal,signal.timestamp,entry,sl,tp)
+def close_trade(trade,*,exit_price,exit_timestamp,exit_reason):
+    if trade.status=="CLOSED":raise TradingRuleError("Trade is already closed")
+    ts=pd.Timestamp(exit_timestamp)
+    if ts.tzinfo is None:raise TradingRuleError("Exit timestamp must be timezone-aware")
+    price=float(exit_price)
+    if price<=0 or not exit_reason.strip():raise TradingRuleError("Invalid trade close")
+    return PaperTrade(trade.plan,trade.account,trade.quantity,"CLOSED",price,ts.tz_convert("Asia/Kolkata"),exit_reason.strip())
+__all__=["AccountState","PaperTrade","TradePlan","TradingRuleError","can_open_trade","close_trade","make_sweep_trade_plan","quantity_for_risk","register_trade","signal_freshness","validate_risk_configuration"]
