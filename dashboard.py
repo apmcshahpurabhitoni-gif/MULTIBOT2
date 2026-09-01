@@ -1,20 +1,29 @@
-"""Dashboard data boundary for MULTIBOT2.
+"""Dashboard data layer for MULTIBOT2.
 
-The dashboard is presentation-only. Strategy calculations, market-data
-fetching, Telegram formatting and risk calculations stay in their own modules.
+This module prepares canonical backend data for the dashboard.
+It does not calculate strategy signals or modify trading rules.
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any, Iterable
 
+from config import (
+    ACCOUNT_NAMES,
+    ACCOUNT_SIZE_INR,
+    LEVERAGE,
+    MAX_TRADES_PER_DAY,
+    NSE_15_SYMBOLS,
+    RISK_PER_TRADE_INR,
+)
 from strategies import StrategySignal
-from trading import PaperTrade
+from trading import AccountState, PaperTrade
 
 
-def signal_to_dict(signal: StrategySignal) -> dict[str, Any]:
-    """Convert a canonical strategy signal into dashboard data."""
+def signal_to_dict(
+    signal: StrategySignal,
+) -> dict[str, Any]:
+    """Convert a strategy signal to dashboard-safe data."""
 
     return {
         "strategy": signal.strategy,
@@ -24,8 +33,10 @@ def signal_to_dict(signal: StrategySignal) -> dict[str, Any]:
     }
 
 
-def trade_to_dict(trade: PaperTrade) -> dict[str, Any]:
-    """Convert a paper trade into dashboard-safe data."""
+def trade_to_dict(
+    trade: PaperTrade,
+) -> dict[str, Any]:
+    """Convert a paper trade to dashboard-safe data."""
 
     plan = trade.plan
 
@@ -34,7 +45,9 @@ def trade_to_dict(trade: PaperTrade) -> dict[str, Any]:
         "plan": {
             "strategy": plan.strategy,
             "side": plan.side,
-            "signal_timestamp": plan.signal_timestamp.isoformat(),
+            "signal_timestamp": (
+                plan.signal_timestamp.isoformat()
+            ),
             "entry": plan.entry,
             "stop_loss": plan.stop_loss,
             "take_profit": plan.take_profit,
@@ -50,9 +63,36 @@ def trade_to_dict(trade: PaperTrade) -> dict[str, Any]:
     }
 
 
+def account_to_dict(
+    account: AccountState,
+) -> dict[str, Any]:
+    """Convert account state to dashboard-safe data."""
+
+    return {
+        "name": account.name,
+        "starting_balance": account.starting_balance,
+        "planned_risk_used": account.planned_risk_used,
+        "trades_today": account.trades_today,
+        "remaining_trades": max(
+            0,
+            MAX_TRADES_PER_DAY
+            - account.trades_today,
+        ),
+        "remaining_planned_risk": max(
+            0,
+            (
+                RISK_PER_TRADE_INR
+                * MAX_TRADES_PER_DAY
+            )
+            - account.planned_risk_used,
+        ),
+    }
+
+
 def build_dashboard_snapshot(
     signals: Iterable[StrategySignal] = (),
     trades: Iterable[PaperTrade] = (),
+    accounts: Iterable[AccountState] = (),
 ) -> dict[str, Any]:
     """Build the canonical dashboard payload."""
 
@@ -66,23 +106,63 @@ def build_dashboard_snapshot(
         for trade in trades
     ]
 
+    account_rows = [
+        account_to_dict(account)
+        for account in accounts
+    ]
+
     open_trades = [
         trade
         for trade in trade_rows
         if trade["status"] == "OPEN"
     ]
 
+    closed_trades = [
+        trade
+        for trade in trade_rows
+        if trade["status"] == "CLOSED"
+    ]
+
     return {
         "system": {
             "status": "ONLINE",
             "mode": "PAPER",
+            "timezone": "Asia/Kolkata",
+            "timeframe": "1h",
+            "leverage": LEVERAGE,
         },
+
+        "rules": {
+            "account_size_inr": ACCOUNT_SIZE_INR,
+            "risk_per_trade_inr": RISK_PER_TRADE_INR,
+            "max_trades_per_day": MAX_TRADES_PER_DAY,
+            "max_daily_planned_risk_inr": (
+                RISK_PER_TRADE_INR
+                * MAX_TRADES_PER_DAY
+            ),
+        },
+
+        "universe": {
+            "count": len(NSE_15_SYMBOLS),
+            "symbols": list(NSE_15_SYMBOLS),
+            "fixed": True,
+        },
+
+        "accounts": {
+            "count": len(ACCOUNT_NAMES),
+            "names": list(ACCOUNT_NAMES),
+            "data": account_rows,
+        },
+
         "signals": signal_rows,
+
         "trades": trade_rows,
+
         "counts": {
             "signals": len(signal_rows),
             "trades": len(trade_rows),
             "open_trades": len(open_trades),
+            "closed_trades": len(closed_trades),
         },
     }
 
