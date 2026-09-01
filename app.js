@@ -1,34 +1,79 @@
+"use strict";
+
 /*
  * MULTIBOT2 dashboard controller.
  *
- * This file is presentation logic only.
- * It does not calculate strategy signals, entries, SL, TP or risk.
+ * Frontend responsibilities:
+ * - navigation
+ * - theme/style controls
+ * - IST clock
+ * - rendering backend data
+ * - signal freshness display
+ *
+ * Frontend must NOT calculate:
+ * - strategy signals
+ * - entry
+ * - stop-loss
+ * - take-profit
+ * - position sizing
+ * - risk
  */
 
-"use strict";
 
-const CONFIG = {
-    apiUrl: window.DASHBOARD_API_URL || "/api/dashboard",
+/* =========================================================
+   CONFIGURATION
+   ========================================================= */
+
+const CONFIG = Object.freeze({
+    apiUrl:
+        window.DASHBOARD_API_URL ||
+        "/api/dashboard",
+
+    timezone:
+        "Asia/Kolkata",
+
     freshnessHours: 1,
-    timezone: "Asia/Kolkata",
-    refreshMs: 30_000,
-};
 
-const SCHEDULE = [
+    refreshMs: 30_000,
+});
+
+
+const SCHEDULE = Object.freeze([
     "09:15",
     "10:15",
     "11:15",
     "12:15",
     "13:15",
     "14:15",
-];
+]);
+
+
+/* =========================================================
+   STATE
+   ========================================================= */
 
 let dashboardData = {
     system: {
         status: "WAITING",
         mode: "PAPER",
     },
+
+    rules: {},
+
+    universe: {
+        count: 15,
+        symbols: [],
+        fixed: true,
+    },
+
+    accounts: {
+        count: 4,
+        names: [],
+        data: [],
+    },
+
     signals: [],
+
     trades: [],
 };
 
@@ -36,7 +81,7 @@ let lastUpdate = null;
 
 
 /* =========================================================
-   DOM
+   DOM HELPERS
    ========================================================= */
 
 function byId(id) {
@@ -45,7 +90,7 @@ function byId(id) {
 
 
 /* =========================================================
-   SAFETY / FORMATTING
+   HTML SAFETY
    ========================================================= */
 
 function escapeHtml(value) {
@@ -58,6 +103,27 @@ function escapeHtml(value) {
 }
 
 
+/* =========================================================
+   NUMBER FORMATTING
+   ========================================================= */
+
+function formatINR(value) {
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return "—";
+    }
+
+    return `₹${number.toLocaleString(
+        "en-IN",
+        {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+        }
+    )}`;
+}
+
+
 function formatPrice(value) {
     const number = Number(value);
 
@@ -65,12 +131,19 @@ function formatPrice(value) {
         return "—";
     }
 
-    return number.toLocaleString("en-IN", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    });
+    return number.toLocaleString(
+        "en-IN",
+        {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }
+    );
 }
 
+
+/* =========================================================
+   TIME FORMATTING
+   ========================================================= */
 
 function formatTimestamp(value) {
     if (!value) {
@@ -83,26 +156,34 @@ function formatTimestamp(value) {
         return "—";
     }
 
-    return new Intl.DateTimeFormat("en-IN", {
-        timeZone: CONFIG.timezone,
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-    }).format(date);
+    return new Intl.DateTimeFormat(
+        "en-IN",
+        {
+            timeZone: CONFIG.timezone,
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        }
+    ).format(date);
 }
 
 
-function formatClock(date = new Date()) {
-    return new Intl.DateTimeFormat("en-IN", {
-        timeZone: CONFIG.timezone,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-    }).format(date);
+function formatClock(
+    date = new Date()
+) {
+    return new Intl.DateTimeFormat(
+        "en-IN",
+        {
+            timeZone: CONFIG.timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+        }
+    ).format(date);
 }
 
 
@@ -120,14 +201,20 @@ function getFreshness(timestamp) {
 
     const signalDate = new Date(timestamp);
 
-    if (Number.isNaN(signalDate.getTime())) {
+    if (
+        Number.isNaN(
+            signalDate.getTime()
+        )
+    ) {
         return {
-            label: "UNKNOWN",
+            label: "INVALID",
             className: "stale",
         };
     }
 
-    const ageMs = Date.now() - signalDate.getTime();
+    const ageMs =
+        Date.now()
+        - signalDate.getTime();
 
     if (ageMs < 0) {
         return {
@@ -136,9 +223,14 @@ function getFreshness(timestamp) {
         };
     }
 
-    const ageHours = ageMs / (60 * 60 * 1000);
+    const ageHours =
+        ageMs /
+        (60 * 60 * 1000);
 
-    if (ageHours <= CONFIG.freshnessHours) {
+    if (
+        ageHours <=
+        CONFIG.freshnessHours
+    ) {
         return {
             label: "FRESH",
             className: "fresh",
@@ -153,21 +245,24 @@ function getFreshness(timestamp) {
 
 
 /* =========================================================
-   SIGNAL RENDERING
+   SIGNAL HELPERS
    ========================================================= */
 
 function signalClass(signal) {
-    const value = String(signal || "NO_SIGNAL")
-        .toLowerCase();
+    const normalized =
+        String(
+            signal || "NO_SIGNAL"
+        )
+            .toLowerCase()
+            .replaceAll("_", "-");
 
     if (
-        value === "buy" ||
-        value === "sell" ||
-        value === "neutral" ||
-        value === "no-signal" ||
-        value === "no_signal"
+        normalized === "buy" ||
+        normalized === "sell" ||
+        normalized === "neutral" ||
+        normalized === "no-signal"
     ) {
-        return value.replace("_", "-");
+        return normalized;
     }
 
     return "no-signal";
@@ -175,24 +270,35 @@ function signalClass(signal) {
 
 
 function signalDirection(signal) {
-    const value = String(signal || "NO_SIGNAL");
+    const normalized =
+        String(
+            signal || "NO_SIGNAL"
+        ).toUpperCase();
 
-    if (value === "NO_SIGNAL") {
+    if (
+        normalized === "NO_SIGNAL"
+    ) {
         return "NO SIGNAL";
     }
 
-    return value;
+    return normalized;
 }
 
 
-function renderSignal(signal) {
-    const freshness = getFreshness(
-        signal.timestamp
-    );
+/* =========================================================
+   SIGNAL RENDERING
+   ========================================================= */
 
-    const directionClass = signalClass(
-        signal.signal
-    );
+function renderSignal(signal) {
+    const freshness =
+        getFreshness(
+            signal.timestamp
+        );
+
+    const directionClass =
+        signalClass(
+            signal.signal
+        );
 
     return `
         <div class="signal-card">
@@ -203,7 +309,8 @@ function renderSignal(signal) {
 
                     <div class="signal-strategy">
                         ${escapeHtml(
-                            signal.strategy || "Strategy"
+                            signal.strategy ||
+                            "Strategy"
                         )}
                     </div>
 
@@ -217,11 +324,14 @@ function renderSignal(signal) {
 
                 </div>
 
+
                 <div
                     class="signal-direction ${directionClass}"
                 >
                     ${escapeHtml(
-                        signalDirection(signal.signal)
+                        signalDirection(
+                            signal.signal
+                        )
                     )}
                 </div>
 
@@ -255,7 +365,8 @@ function renderSignal(signal) {
 
                     <strong>
                         ${escapeHtml(
-                            signal.timeframe || "1H"
+                            signal.timeframe ||
+                            "1H"
                         )}
                     </strong>
 
@@ -270,7 +381,8 @@ function renderSignal(signal) {
 
                     <strong>
                         ${escapeHtml(
-                            signal.reason || "—"
+                            signal.reason ||
+                            "—"
                         )}
                     </strong>
 
@@ -283,12 +395,6 @@ function renderSignal(signal) {
                 class="freshness ${freshness.className}"
             >
                 ${freshness.label}
-                ·
-                ${escapeHtml(
-                    formatTimestamp(
-                        signal.timestamp
-                    )
-                )}
             </div>
 
         </div>
@@ -301,7 +407,20 @@ function renderSignal(signal) {
    ========================================================= */
 
 function renderTrade(trade) {
-    const plan = trade.plan || {};
+    const plan =
+        trade.plan || {};
+
+    const side =
+        String(
+            plan.side || ""
+        ).toUpperCase();
+
+    const sideClass =
+        side === "BUY"
+            ? "positive"
+            : side === "SELL"
+                ? "negative"
+                : "";
 
     return `
         <div class="trade-card">
@@ -311,26 +430,32 @@ function renderTrade(trade) {
                 <div class="trade-title">
 
                     ${escapeHtml(
-                        plan.strategy || "Strategy"
+                        plan.strategy ||
+                        "Strategy"
                     )}
 
                     ·
 
-                    ${escapeHtml(
-                        plan.side || "—"
-                    )}
+                    <span class="${sideClass}">
+                        ${escapeHtml(
+                            side || "—"
+                        )}
+                    </span>
 
                 </div>
+
 
                 <div
                     class="trade-status ${
                         String(
-                            trade.status || "OPEN"
+                            trade.status ||
+                            "OPEN"
                         ).toLowerCase()
                     }"
                 >
                     ${escapeHtml(
-                        trade.status || "OPEN"
+                        trade.status ||
+                        "OPEN"
                     )}
                 </div>
 
@@ -412,56 +537,79 @@ function renderTrade(trade) {
    ========================================================= */
 
 function renderOverview() {
-    const signals = Array.isArray(
-        dashboardData.signals
-    )
-        ? dashboardData.signals
-        : [];
+    const signals =
+        Array.isArray(
+            dashboardData.signals
+        )
+            ? dashboardData.signals
+            : [];
 
-    const trades = Array.isArray(
-        dashboardData.trades
-    )
-        ? dashboardData.trades
-        : [];
+    const trades =
+        Array.isArray(
+            dashboardData.trades
+        )
+            ? dashboardData.trades
+            : [];
 
-    const openTrades = trades.filter(
-        trade =>
-            String(
-                trade.status || ""
-            ).toUpperCase() === "OPEN"
-    );
+    const openTrades =
+        trades.filter(
+            trade =>
+                String(
+                    trade.status || ""
+                ).toUpperCase()
+                === "OPEN"
+        );
 
-    const systemStatus =
+
+    const status =
         dashboardData.system?.status ||
         "WAITING";
 
-    byId("overviewSystem").textContent =
-        systemStatus;
 
-    byId("overviewSignalCount").textContent =
+    byId(
+        "overviewSystem"
+    ).textContent =
+        status;
+
+
+    byId(
+        "overviewSignalCount"
+    ).textContent =
         signals.length;
 
-    byId("overviewTradeCount").textContent =
+
+    byId(
+        "overviewTradeCount"
+    ).textContent =
         openTrades.length;
 
-    byId("overviewUpdated").textContent =
+
+    byId(
+        "overviewUpdated"
+    ).textContent =
         lastUpdate
-            ? formatTimestamp(lastUpdate)
+            ? formatTimestamp(
+                lastUpdate
+            )
             : "—";
 
 
     const overviewSignals =
-        byId("overviewSignals");
+        byId(
+            "overviewSignals"
+        );
+
 
     if (!signals.length) {
-        overviewSignals.innerHTML =
-            `
-                <div class="empty-state">
-                    No signals loaded.
-                </div>
-            `;
+
+        overviewSignals.innerHTML = `
+            <div class="empty-state">
+                No signals loaded.
+            </div>
+        `;
 
     } else {
+
         overviewSignals.innerHTML =
             signals
                 .slice(0, 5)
@@ -471,23 +619,94 @@ function renderOverview() {
 
 
     const overviewTrades =
-        byId("overviewTrades");
+        byId(
+            "overviewTrades"
+        );
+
 
     if (!openTrades.length) {
-        overviewTrades.innerHTML =
-            `
-                <div class="empty-state">
-                    No open trades.
-                </div>
-            `;
+
+        overviewTrades.innerHTML = `
+            <div class="empty-state">
+                No open trades.
+            </div>
+        `;
 
     } else {
+
         overviewTrades.innerHTML =
             openTrades
                 .slice(0, 5)
                 .map(renderTrade)
                 .join("");
     }
+}
+
+
+/* =========================================================
+   TRADES
+   ========================================================= */
+
+function renderTrades() {
+    const container =
+        byId("tradesList");
+
+    const trades =
+        Array.isArray(
+            dashboardData.trades
+        )
+            ? dashboardData.trades
+            : [];
+
+
+    const openTrades =
+        trades.filter(
+            trade =>
+                String(
+                    trade.status || ""
+                ).toUpperCase()
+                === "OPEN"
+        );
+
+
+    const closedTrades =
+        trades.filter(
+            trade =>
+                String(
+                    trade.status || ""
+                ).toUpperCase()
+                === "CLOSED"
+        );
+
+
+    byId(
+        "tradesOpenCount"
+    ).textContent =
+        openTrades.length;
+
+
+    byId(
+        "tradesClosedCount"
+    ).textContent =
+        closedTrades.length;
+
+
+    if (!openTrades.length) {
+
+        container.innerHTML = `
+            <div class="empty-state">
+                No open trades.
+            </div>
+        `;
+
+        return;
+    }
+
+
+    container.innerHTML =
+        openTrades
+            .map(renderTrade)
+            .join("");
 }
 
 
@@ -499,78 +718,29 @@ function renderSignals() {
     const container =
         byId("signalsList");
 
-    const signals = Array.isArray(
-        dashboardData.signals
-    )
-        ? dashboardData.signals
-        : [];
+    const signals =
+        Array.isArray(
+            dashboardData.signals
+        )
+            ? dashboardData.signals
+            : [];
+
 
     if (!signals.length) {
-        container.innerHTML =
-            `
-                <div class="empty-state">
-                    No signals loaded.
-                </div>
-            `;
+
+        container.innerHTML = `
+            <div class="empty-state">
+                No signals loaded.
+            </div>
+        `;
 
         return;
     }
+
 
     container.innerHTML =
         signals
             .map(renderSignal)
-            .join("");
-}
-
-
-/* =========================================================
-   TRADES PAGE
-   ========================================================= */
-
-function renderTrades() {
-    const container =
-        byId("tradesList");
-
-    const trades = Array.isArray(
-        dashboardData.trades
-    )
-        ? dashboardData.trades
-        : [];
-
-    const openTrades = trades.filter(
-        trade =>
-            String(
-                trade.status || ""
-            ).toUpperCase() === "OPEN"
-    );
-
-    const closedTrades = trades.filter(
-        trade =>
-            String(
-                trade.status || ""
-            ).toUpperCase() === "CLOSED"
-    );
-
-    byId("tradesOpenCount").textContent =
-        openTrades.length;
-
-    byId("tradesClosedCount").textContent =
-        closedTrades.length;
-
-    if (!openTrades.length) {
-        container.innerHTML =
-            `
-                <div class="empty-state">
-                    No open trades.
-                </div>
-            `;
-
-        return;
-    }
-
-    container.innerHTML =
-        openTrades
-            .map(renderTrade)
             .join("");
 }
 
@@ -583,29 +753,35 @@ function renderHistory() {
     const container =
         byId("historyList");
 
-    const trades = Array.isArray(
-        dashboardData.trades
-    )
-        ? dashboardData.trades
-        : [];
+    const trades =
+        Array.isArray(
+            dashboardData.trades
+        )
+            ? dashboardData.trades
+            : [];
 
-    const closedTrades = trades.filter(
-        trade =>
-            String(
-                trade.status || ""
-            ).toUpperCase() === "CLOSED"
-    );
+
+    const closedTrades =
+        trades.filter(
+            trade =>
+                String(
+                    trade.status || ""
+                ).toUpperCase()
+                === "CLOSED"
+        );
+
 
     if (!closedTrades.length) {
-        container.innerHTML =
-            `
-                <div class="empty-state">
-                    No historical records loaded.
-                </div>
-            `;
+
+        container.innerHTML = `
+            <div class="empty-state">
+                No historical records loaded.
+            </div>
+        `;
 
         return;
     }
+
 
     container.innerHTML =
         closedTrades
@@ -622,22 +798,25 @@ function renderNews() {
     const container =
         byId("newsList");
 
-    const news = Array.isArray(
-        dashboardData.news
-    )
-        ? dashboardData.news
-        : [];
+    const news =
+        Array.isArray(
+            dashboardData.news
+        )
+            ? dashboardData.news
+            : [];
+
 
     if (!news.length) {
-        container.innerHTML =
-            `
-                <div class="empty-state">
-                    No news loaded.
-                </div>
-            `;
+
+        container.innerHTML = `
+            <div class="empty-state">
+                No news loaded.
+            </div>
+        `;
 
         return;
     }
+
 
     container.innerHTML =
         news
@@ -653,7 +832,8 @@ function renderNews() {
 
                     <div class="signal-symbol">
                         ${escapeHtml(
-                            item.source || ""
+                            item.source ||
+                            ""
                         )}
                     </div>
 
@@ -669,7 +849,9 @@ function renderNews() {
 
 function renderSchedule() {
     const container =
-        byId("candleSchedule");
+        byId(
+            "candleSchedule"
+        );
 
     container.innerHTML =
         SCHEDULE
@@ -693,27 +875,34 @@ function renderSystemStatus() {
             "WAITING"
         ).toUpperCase();
 
-    byId("systemStatus").textContent =
+
+    byId(
+        "systemStatus"
+    ).textContent =
         status;
 
-    byId("overviewSystem").textContent =
+
+    byId(
+        "overviewSystem"
+    ).textContent =
         status;
 
-    byId("systemStatusDot").className =
-        "status-dot";
 
-    if (status !== "ONLINE") {
-        byId("systemStatusDot").style.opacity =
-            "0.45";
-    } else {
-        byId("systemStatusDot").style.opacity =
-            "1";
-    }
+    const dot =
+        byId(
+            "systemStatusDot"
+        );
+
+
+    dot.style.opacity =
+        status === "ONLINE"
+            ? "1"
+            : "0.45";
 }
 
 
 /* =========================================================
-   COMPLETE RENDER
+   DASHBOARD RENDER
    ========================================================= */
 
 function renderDashboard() {
@@ -734,10 +923,12 @@ function renderDashboard() {
 
 
 /* =========================================================
-   DATA VALIDATION
+   PAYLOAD VALIDATION
    ========================================================= */
 
-function normalizeDashboardPayload(payload) {
+function normalizeDashboardPayload(
+    payload
+) {
     if (
         !payload ||
         typeof payload !== "object"
@@ -747,28 +938,71 @@ function normalizeDashboardPayload(payload) {
         );
     }
 
+
     return {
         system:
             payload.system &&
-            typeof payload.system === "object"
+            typeof payload.system ===
+                "object"
                 ? payload.system
                 : {
                     status: "WAITING",
                     mode: "PAPER",
                 },
 
+
+        rules:
+            payload.rules &&
+            typeof payload.rules ===
+                "object"
+                ? payload.rules
+                : {},
+
+
+        universe:
+            payload.universe &&
+            typeof payload.universe ===
+                "object"
+                ? payload.universe
+                : {
+                    count: 15,
+                    symbols: [],
+                    fixed: true,
+                },
+
+
+        accounts:
+            payload.accounts &&
+            typeof payload.accounts ===
+                "object"
+                ? payload.accounts
+                : {
+                    count: 4,
+                    names: [],
+                    data: [],
+                },
+
+
         signals:
-            Array.isArray(payload.signals)
+            Array.isArray(
+                payload.signals
+            )
                 ? payload.signals
                 : [],
 
+
         trades:
-            Array.isArray(payload.trades)
+            Array.isArray(
+                payload.trades
+            )
                 ? payload.trades
                 : [],
 
+
         news:
-            Array.isArray(payload.news)
+            Array.isArray(
+                payload.news
+            )
                 ? payload.news
                 : [],
     };
@@ -776,17 +1010,19 @@ function normalizeDashboardPayload(payload) {
 
 
 /* =========================================================
-   LOAD DATA
+   API
    ========================================================= */
 
 async function loadDashboard() {
     try {
+
         const response =
             await fetch(
                 CONFIG.apiUrl,
                 {
                     method: "GET",
                     cache: "no-store",
+
                     headers: {
                         Accept:
                             "application/json",
@@ -794,22 +1030,28 @@ async function loadDashboard() {
                 }
             );
 
+
         if (!response.ok) {
+
             throw new Error(
                 `Dashboard API returned ${response.status}`
             );
         }
 
+
         const payload =
             await response.json();
+
 
         dashboardData =
             normalizeDashboardPayload(
                 payload
             );
 
+
         lastUpdate =
             new Date();
+
 
         renderDashboard();
 
@@ -834,15 +1076,21 @@ async function loadDashboard() {
    NAVIGATION
    ========================================================= */
 
-function showPage(pageName) {
+function showPage(
+    pageName
+) {
     document
-        .querySelectorAll(".page")
+        .querySelectorAll(
+            ".page"
+        )
         .forEach(page => {
+
             page.classList.toggle(
                 "active",
                 page.id ===
                     `page-${pageName}`
             );
+
         });
 
 
@@ -851,11 +1099,13 @@ function showPage(pageName) {
             ".nav-button, .mobile-nav-button"
         )
         .forEach(button => {
+
             button.classList.toggle(
                 "active",
                 button.dataset.page ===
                     pageName
             );
+
         });
 
 
@@ -867,6 +1117,7 @@ function showPage(pageName) {
 
 
 function setupNavigation() {
+
     document
         .querySelectorAll(
             ".nav-button, .mobile-nav-button"
@@ -876,9 +1127,11 @@ function setupNavigation() {
             button.addEventListener(
                 "click",
                 () => {
+
                     showPage(
                         button.dataset.page
                     );
+
                 }
             );
 
@@ -894,9 +1147,11 @@ function setupNavigation() {
             button.addEventListener(
                 "click",
                 () => {
+
                     showPage(
                         button.dataset.pageLink
                     );
+
                 }
             );
 
@@ -905,7 +1160,7 @@ function setupNavigation() {
 
 
 /* =========================================================
-   THEME
+   THEME / STYLE
    ========================================================= */
 
 function setupThemes() {
@@ -923,8 +1178,12 @@ function setupThemes() {
                 "click",
                 () => {
 
-                    root.dataset.theme =
+                    const theme =
                         button.dataset.theme;
+
+                    root.dataset.theme =
+                        theme;
+
 
                     document
                         .querySelectorAll(
@@ -935,15 +1194,17 @@ function setupThemes() {
                             item.classList.toggle(
                                 "active",
                                 item.dataset.theme ===
-                                    button.dataset.theme
+                                    theme
                             );
 
                         });
 
+
                     localStorage.setItem(
                         "multibot2-theme",
-                        button.dataset.theme
+                        theme
                     );
+
                 }
             );
 
@@ -960,8 +1221,12 @@ function setupThemes() {
                 "click",
                 () => {
 
-                    root.dataset.style =
+                    const style =
                         button.dataset.style;
+
+                    root.dataset.style =
+                        style;
+
 
                     document
                         .querySelectorAll(
@@ -972,15 +1237,17 @@ function setupThemes() {
                             item.classList.toggle(
                                 "active",
                                 item.dataset.style ===
-                                    button.dataset.style
+                                    style
                             );
 
                         });
 
+
                     localStorage.setItem(
                         "multibot2-style",
-                        button.dataset.style
+                        style
                     );
+
                 }
             );
 
@@ -992,49 +1259,57 @@ function setupThemes() {
             "multibot2-theme"
         );
 
+
     const savedStyle =
         localStorage.getItem(
             "multibot2-style"
         );
 
+
     if (
         savedTheme === "light" ||
         savedTheme === "dark"
     ) {
+
         root.dataset.theme =
             savedTheme;
     }
+
 
     if (
         savedStyle === "modern" ||
         savedStyle === "neo"
     ) {
+
         root.dataset.style =
             savedStyle;
     }
 
 
-    byId("themeToggle")
-        .addEventListener(
-            "click",
-            () => {
+    byId(
+        "themeToggle"
+    ).addEventListener(
+        "click",
+        () => {
 
-                const next =
-                    root.dataset.theme ===
-                        "dark"
-                        ? "light"
-                        : "dark";
+            const next =
+                root.dataset.theme ===
+                    "dark"
+                    ? "light"
+                    : "dark";
 
-                root.dataset.theme =
-                    next;
 
-                localStorage.setItem(
-                    "multibot2-theme",
-                    next
-                );
+            root.dataset.theme =
+                next;
 
-            }
-        );
+
+            localStorage.setItem(
+                "multibot2-theme",
+                next
+            );
+
+        }
+    );
 }
 
 
@@ -1043,7 +1318,9 @@ function setupThemes() {
    ========================================================= */
 
 function updateClock() {
-    byId("marketClock").textContent =
+    byId(
+        "marketClock"
+    ).textContent =
         formatClock();
 }
 
@@ -1053,6 +1330,7 @@ function updateClock() {
    ========================================================= */
 
 function startDashboard() {
+
     setupNavigation();
 
     setupThemes();
