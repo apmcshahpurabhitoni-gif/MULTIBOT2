@@ -43,7 +43,8 @@ def run_trendpulse_cycle(*,now_at=None,send=True,period="30d"):
     return results
 def run_sweep_cycle(*,now_at=None,send=True,period="30d"):
     ensure_runtime();results=SWEEP.scan_universe_and_dispatch(now=now_at,period=period,send=send)
-    for r in results:SIGNALS.append({"strategy":r.signal.strategy,"symbol":r.symbol,"signal":r.signal.signal,"timestamp":r.signal.timestamp.isoformat(),"reason":r.signal.reason});record_result(r)
+    for r in results:
+        if r.signal.signal in ("BUY","SELL"):SIGNALS.append({"strategy":r.signal.strategy,"symbol":r.symbol,"signal":r.signal.signal,"timestamp":r.signal.timestamp.isoformat(),"reason":r.signal.reason});record_result(r)
     return results
 def _price(symbol):
     try:data=RUNTIME.provider.fetch(f"{symbol}.NS",period="1d",interval="1m",validate_hourly=False);return None if data.empty else float(data.close.iloc[-1])
@@ -75,7 +76,8 @@ def web_server():
     root=os.path.dirname(__file__);files={"/":("dashboard.html","text/html; charset=utf-8"),"/app.js":("app.js","application/javascript"),"/styles.css":("styles.css","text/css")}
     def app(env,start):
         path=env.get("PATH_INFO","/")
-        if path=="/api/health":body=json.dumps({"ok":True,"status":"ONLINE","timestamp":now().isoformat()}).encode();typ="application/json"
+        if path in ("/ping","/api/health"):
+            body=(b"pong" if path=="/ping" else json.dumps({"ok":True,"status":"ONLINE","timestamp":now().isoformat()}).encode());typ="text/plain" if path=="/ping" else "application/json"
         elif path=="/api/dashboard":body=json.dumps(snapshot(),default=str).encode();typ="application/json"
         elif path in files:
             name,typ=files[path]
