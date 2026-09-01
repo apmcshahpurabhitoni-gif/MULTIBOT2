@@ -1,13 +1,12 @@
-"""Canonical strategy engine for MULTIBOT2.
+"""Canonical strategy boundary for MULTIBOT2.
 
-Strategy calculations live here only.
-
-Important:
+Rules:
+- Strategy logic lives only in this module.
 - Strategies consume completed candles.
-- Strategies do not fetch market data.
-- Strategies do not send Telegram messages.
-- Strategies do not calculate position sizing.
-- Strategies do not contain dashboard/UI code.
+- Strategies never fetch market data.
+- Strategies never send Telegram messages.
+- Strategies never calculate position sizing.
+- Unapproved strategy rules fail closed.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ SignalType = Literal[
 
 @dataclass(frozen=True)
 class StrategySignal:
-    """Canonical result returned by every strategy."""
+    """Canonical strategy result."""
 
     strategy: str
     signal: SignalType
@@ -53,21 +52,46 @@ class StrategySignal:
         )
 
 
-def _require_columns(
-    frame: pd.DataFrame,
-    columns: tuple[str, ...],
+def _validate_candle(
+    candle: pd.Series,
+    *,
+    name: str,
 ) -> None:
+    """Validate the fields required by a strategy."""
+
+    required = (
+        "open",
+        "high",
+        "low",
+        "close",
+    )
+
     missing = [
         column
-        for column in columns
-        if column not in frame.columns
+        for column in required
+        if column not in candle.index
     ]
 
     if missing:
         raise ValueError(
-            f"Missing required columns: {', '.join(missing)}"
+            f"{name} candle missing: "
+            + ", ".join(missing)
         )
 
+    values = [
+        candle[column]
+        for column in required
+    ]
+
+    if any(pd.isna(value) for value in values):
+        raise ValueError(
+            f"{name} candle contains missing OHLC data"
+        )
+
+
+# ============================================================
+# SWEEP V2
+# ============================================================
 
 def sweep_v2(
     previous: pd.Series,
@@ -75,34 +99,35 @@ def sweep_v2(
     *,
     timestamp: pd.Timestamp,
 ) -> StrategySignal:
-    """Evaluate one completed Sweep V2 candle.
+    """Evaluate the locked Sweep V2 rule.
 
-    Rules:
-    1. The current candle must sweep both the previous high and previous low.
-    2. Close above the previous high -> BUY.
-    3. Close below the previous low -> SELL.
-    4. Close inside the previous range -> NEUTRAL.
-    5. If both sides were not swept -> NO_SIGNAL.
+    BUY:
+        Both previous high and previous low are swept,
+        and the current close is above the previous high.
 
-    No one-sided sweep is treated as a trade signal.
+    SELL:
+        Both previous high and previous low are swept,
+        and the current close is below the previous low.
+
+    NEUTRAL:
+        Both sides are swept, but the close remains inside
+        the previous range.
+
+    NO_SIGNAL:
+        Both sides are not swept.
+
+    A one-sided sweep is never converted into BUY or SELL.
     """
 
-    required = ("high", "low", "close")
+    _validate_candle(
+        previous,
+        name="Previous",
+    )
 
-    for name, candle in (
-        ("previous", previous),
-        ("current", current),
-    ):
-        missing = [
-            column
-            for column in required
-            if column not in candle.index
-        ]
-
-        if missing:
-            raise ValueError(
-                f"{name} candle missing: {', '.join(missing)}"
-            )
+    _validate_candle(
+        current,
+        name="Current",
+    )
 
     timestamp = pd.Timestamp(timestamp)
 
@@ -111,61 +136,90 @@ def sweep_v2(
             "Strategy signal timestamp must be timezone-aware"
         )
 
-    timestamp = timestamp.tz_convert(IST_TIMEZONE)
+    timestamp = timestamp.tz_convert(
+        IST_TIMEZONE
+    )
 
-    previous_high = float(previous["high"])
-    previous_low = float(previous["low"])
-    current_high = float(current["high"])
-    current_low = float(current["low"])
-    current_close = float(current["close"])
+    previous_high = float(
+        previous["high"]
+    )
 
-    if current_high > previous_high and current_low < previous_low:
-        if current_close > previous_high:
-            return StrategySignal(
-                strategy="Sweep V2",
-                signal="BUY",
-                timestamp=timestamp,
-                reason="BOTH_SIDES_SWEPT_CLOSE_ABOVE_PREVIOUS_HIGH",
-            )
+    previous_low = float(
+        previous["low"]
+    )
 
-        if current_close < previous_low:
-            return StrategySignal(
-                strategy="Sweep V2",
-                signal="SELL",
-                timestamp=timestamp,
-                reason="BOTH_SIDES_SWEPT_CLOSE_BELOW_PREVIOUS_LOW",
-            )
+    current_high = float(
+        current["high"]
+    )
 
+    current_low = float(
+        current["low"]
+    )
+
+    current_close = float(
+        current["close"]
+    )
+
+    both_sides_swept = (
+        current_high > previous_high
+        and current_low < previous_low
+    )
+
+    if not both_sides_swept:
         return StrategySignal(
             strategy="Sweep V2",
-            signal="NEUTRAL",
+            signal="NO_SIGNAL",
             timestamp=timestamp,
-            reason="BOTH_SIDES_SWEPT_CLOSE_INSIDE_PREVIOUS_RANGE",
+            reason="BOTH_SIDES_NOT_SWEPT",
+        )
+
+    if current_close > previous_high:
+        return StrategySignal(
+            strategy="Sweep V2",
+            signal="BUY",
+            timestamp=timestamp,
+            reason=(
+                "BOTH_SIDES_SWEPT_"
+                "CLOSE_ABOVE_PREVIOUS_HIGH"
+            ),
+        )
+
+    if current_close < previous_low:
+        return StrategySignal(
+            strategy="Sweep V2",
+            signal="SELL",
+            timestamp=timestamp,
+            reason=(
+                "BOTH_SIDES_SWEPT_"
+                "CLOSE_BELOW_PREVIOUS_LOW"
+            ),
         )
 
     return StrategySignal(
         strategy="Sweep V2",
-        signal="NO_SIGNAL",
+        signal="NEUTRAL",
         timestamp=timestamp,
-        reason="BOTH_SIDES_NOT_SWEPT",
+        reason=(
+            "BOTH_SIDES_SWEPT_"
+            "CLOSE_INSIDE_PREVIOUS_RANGE"
+        ),
     )
 
 
 def sweep_v2_from_frame(
     candles: pd.DataFrame,
 ) -> StrategySignal:
-    """Evaluate the most recent completed pair of Sweep candles."""
+    """Evaluate Sweep V2 using the latest two completed candles."""
 
     candles = normalize_index(candles)
 
-    _require_columns(
-        candles,
-        ("open", "high", "low", "close"),
-    )
-
     if len(candles) < 2:
-        timestamp = candles.index[-1] if len(candles) else pd.Timestamp.now(
-            tz=IST_TIMEZONE
+        timestamp = (
+            candles.index[-1]
+            if len(candles)
+            else pd.Timestamp.now(
+                tz=IST_TIMEZONE
+            )
         )
 
         return StrategySignal(
@@ -185,45 +239,9 @@ def sweep_v2_from_frame(
     )
 
 
-def _ema(
-    series: pd.Series,
-    period: int,
-) -> pd.Series:
-    return series.ewm(
-        span=period,
-        adjust=False,
-        min_periods=period,
-    ).mean()
-
-
-def _rsi(
-    series: pd.Series,
-    period: int = 14,
-) -> pd.Series:
-    delta = series.diff()
-
-    gains = delta.clip(lower=0)
-    losses = -delta.clip(upper=0)
-
-    average_gain = gains.rolling(
-        period,
-        min_periods=period,
-    ).mean()
-
-    average_loss = losses.rolling(
-        period,
-        min_periods=period,
-    ).mean()
-
-    relative_strength = average_gain / average_loss.replace(
-        0,
-        pd.NA,
-    )
-
-    return 100 - (
-        100 / (1 + relative_strength)
-    )
-
+# ============================================================
+# TRENDPULSE
+# ============================================================
 
 def trendpulse(
     close_1h: pd.Series,
@@ -231,11 +249,13 @@ def trendpulse(
     *,
     timestamp: pd.Timestamp,
 ) -> StrategySignal:
-    """Evaluate the recovered TrendPulse indicator boundary.
+    """TrendPulse strategy boundary.
 
-    This function intentionally contains only the recovered indicator
-    conditions. Entry, SL, TP, freshness, repeated-signal handling and
-    provider behavior belong to their respective layers.
+    The exact approved TrendPulse formula has not yet been
+    verified in this clean-slate rebuild.
+
+    Therefore this function intentionally fails closed with
+    NO_SIGNAL instead of implementing guessed rules.
     """
 
     timestamp = pd.Timestamp(timestamp)
@@ -245,122 +265,13 @@ def trendpulse(
             "TrendPulse timestamp must be timezone-aware"
         )
 
-    timestamp = timestamp.tz_convert(IST_TIMEZONE)
-
-    if len(close_1h) < 50 or len(close_4h) < 50:
-        return StrategySignal(
-            strategy="TrendPulse",
-            signal="NO_SIGNAL",
-            timestamp=timestamp,
-            reason="INSUFFICIENT_DATA",
-        )
-
-    close_1h = pd.Series(close_1h, dtype=float).copy()
-    close_4h = pd.Series(close_4h, dtype=float).copy()
-
-    ema20 = _ema(close_1h, 20)
-
-    rsi = _rsi(
-        close_1h,
-        14,
+    timestamp = timestamp.tz_convert(
+        IST_TIMEZONE
     )
-
-    ema12 = _ema(
-        close_1h,
-        12,
-    )
-
-    ema26 = _ema(
-        close_1h,
-        26,
-    )
-
-    macd = ema12 - ema26
-
-    macd_signal = _ema(
-        macd,
-        9,
-    )
-
-    ema50_4h = _ema(
-        close_4h,
-        50,
-    )
-
-    required_values = (
-        ema20.iloc[-1],
-        rsi.iloc[-1],
-        macd.iloc[-1],
-        macd_signal.iloc[-1],
-        macd.iloc[-2],
-        macd_signal.iloc[-2],
-        ema50_4h.iloc[-1],
-    )
-
-    if any(pd.isna(value) for value in required_values):
-        return StrategySignal(
-            strategy="TrendPulse",
-            signal="NO_SIGNAL",
-            timestamp=timestamp,
-            reason="INDICATOR_DATA_UNAVAILABLE",
-        )
-
-    price_1h = float(close_1h.iloc[-1])
-    price_4h = float(close_4h.iloc[-1])
-
-    current_ema20 = float(ema20.iloc[-1])
-    current_rsi = float(rsi.iloc[-1])
-
-    current_macd = float(macd.iloc[-1])
-    previous_macd = float(macd.iloc[-2])
-
-    current_macd_signal = float(
-        macd_signal.iloc[-1]
-    )
-
-    previous_macd_signal = float(
-        macd_signal.iloc[-2]
-    )
-
-    current_ema50_4h = float(
-        ema50_4h.iloc[-1]
-    )
-
-    bullish = (
-        price_4h > current_ema50_4h
-        and previous_macd <= previous_macd_signal
-        and current_macd > current_macd_signal
-        and 50 < current_rsi < 80
-        and price_1h > current_ema20
-    )
-
-    bearish = (
-        price_4h < current_ema50_4h
-        and previous_macd >= previous_macd_signal
-        and current_macd < current_macd_signal
-        and 20 < current_rsi < 50
-        and price_1h < current_ema20
-    )
-
-    if bullish:
-        return StrategySignal(
-            strategy="TrendPulse",
-            signal="BUY",
-            timestamp=timestamp,
-            reason="BULLISH_CONFIRMATION",
-        )
-
-    if bearish:
-        return StrategySignal(
-            strategy="TrendPulse",
-            signal="SELL",
-            timestamp=timestamp,
-            reason="BEARISH_CONFIRMATION",
-        )
 
     return StrategySignal(
         strategy="TrendPulse",
         signal="NO_SIGNAL",
         timestamp=timestamp,
-        reason="CONDITIONS_NOT_ALIGNED",
+        reason="TREND_PULSE_RULES_NOT_YET_VERIFIED",
     )
