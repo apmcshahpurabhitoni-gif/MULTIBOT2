@@ -10,9 +10,8 @@ import pandas as pd
 
 from config import (
     ACCOUNT_SIZE_INR,
+    ACCOUNT_TRADE_LIMITS,
     LEVERAGE,
-    MAX_DAILY_PLANNED_RISK_INR,
-    MAX_TRADES_PER_DAY,
     RISK_PER_TRADE_INR,
 )
 from strategies import StrategySignal
@@ -67,9 +66,25 @@ class AccountState:
     planned_risk_used: float = 0.0
     trades_today: int = 0
 
+    @property
+    def daily_trade_limit(self) -> int:
+        """Return the original daily limit for this logical account."""
+        try:
+            return ACCOUNT_TRADE_LIMITS[self.name.lower()]
+        except KeyError as exc:
+            raise TradingRuleError(
+                f"Unknown trading account: {self.name}"
+            ) from exc
+
+    @property
+    def max_daily_planned_risk(self) -> float:
+        """Return this account's total planned-risk allowance."""
+        return RISK_PER_TRADE_INR * self.daily_trade_limit
+
+
 
 def validate_risk_configuration() -> None:
-    """Validate the frozen risk rules."""
+    """Validate the frozen risk and original account-limit rules."""
 
     if ACCOUNT_SIZE_INR != 100_000:
         raise TradingRuleError(
@@ -81,9 +96,15 @@ def validate_risk_configuration() -> None:
             "Risk per trade must be ₹2,000"
         )
 
-    if MAX_TRADES_PER_DAY != 3:
+    expected_limits = {
+        "macro": 20,
+        "nifty": 5,
+        "ny_session": 3,
+        "sweep_4h": 3,
+    }
+    if ACCOUNT_TRADE_LIMITS != expected_limits:
         raise TradingRuleError(
-            "Maximum trades per day must be 3"
+            "Per-account trade limits do not match the original MULTIBOT rules"
         )
 
     if LEVERAGE != 1.0:
@@ -91,14 +112,6 @@ def validate_risk_configuration() -> None:
             "MULTIBOT2 uses 1x leverage"
         )
 
-    if (
-        MAX_DAILY_PLANNED_RISK_INR
-        != RISK_PER_TRADE_INR
-        * MAX_TRADES_PER_DAY
-    ):
-        raise TradingRuleError(
-            "Daily risk limit is inconsistent"
-        )
 
 
 def signal_freshness(
@@ -156,24 +169,32 @@ def signal_freshness(
     return "STALE"
 
 
+
 def can_open_trade(
     account: AccountState,
 ) -> bool:
-    """Return whether another trade may be opened today."""
+    """Return whether another trade may be opened today for this account.
+
+    The original bot used independent account limits:
+    Macro=20, Nifty=5, NY Session=3, Sweep 4H=3.
+    """
 
     validate_risk_configuration()
 
-    if account.trades_today >= MAX_TRADES_PER_DAY:
+    daily_limit = account.daily_trade_limit
+
+    if account.trades_today >= daily_limit:
         return False
 
     if (
         account.planned_risk_used
         + RISK_PER_TRADE_INR
-        > MAX_DAILY_PLANNED_RISK_INR
+        > account.max_daily_planned_risk
     ):
         return False
 
     return True
+
 
 
 def make_sweep_trade_plan(
@@ -292,14 +313,15 @@ def make_sweep_trade_plan(
     )
 
 
+
 def register_trade(
     account: AccountState,
 ) -> AccountState:
-    """Register one planned trade against the daily limits."""
+    """Register one planned trade against that account's daily limits."""
 
     if not can_open_trade(account):
         raise TradingRuleError(
-            "Daily trading limit reached"
+            f"Daily trading limit reached for {account.name}"
         )
 
     return AccountState(
@@ -314,6 +336,7 @@ def register_trade(
             + 1
         ),
     )
+
 
 
 def close_trade(
