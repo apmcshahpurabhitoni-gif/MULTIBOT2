@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-style="modern">
+<head>
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <meta
+        name="theme-color"
+        content="#f7f7f4"
+    >
+
+    <title>Mavis Trading Bot</title>
+
+    <link
+        rel="stylesheet"
+        href="styles.css"
+    >
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- =========================================================
+         HEADER
+         ========================================================= -->
+
+    <header class="topbar">
+
+        <div class="brand">
+
+            <div class="brand-mark">
+                M
+            </div>
+
+            <div class="brand-copy">
+
+                <strong>
+                    Mavis Trading Bot
+                </strong>
+
+                <span>
+                    MULTIBOT2
+                </span>
+
+            </div>
+
+        </div>
+
+        <div class="system-status">
+
+            <span
+                id="systemStatusDot"
+                class="status-dot"
+            ></span>
+
+            <span id="systemStatus">
+                ONLINE
+            </span>
+
+        </div>
+
+        <button
+            id="themeToggle"
+            class="icon-button"
+            type="button"
+            aria-label="Toggle theme"
+        >
+            ◐
+        </button>
+
+    </header>
+
+
+    <!-- =========================================================
+         STYLE CONTROLS
+         ========================================================= -->
+
+    <section class="style-controls">
+
+        <button
+            type="button"
+            class="style-button active"
+            data-theme="light"
+        >
+            Light
+        </button>
+
+        <button
+            type="button"
+            class="style-button"
+            data-theme="dark"
+        >
+            Dark
+        </button>
+
+        <button
+            type="button"
+            class="style-button active"
+            data-style="modern"
+        >
+            Modern
+        </button>
+
+        <button
+            type="button"
+            class="style-button"
+            data-style="neo"
+        >
+            Neo
+        </button>
+
+    </section>
+
+
+    <!-- =========================================================
+         DESKTOP NAVIGATION
+         ========================================================= -->
+
+    <nav class="desktop-nav">
+
+        <button
+            type="button"
+            class="nav-button active"
+            data-page="overview"
+        >
+            Overview
+        </button>
+
+        <button
+            type="button"
+            class="nav-button"
+            data-page="trades"
+        >
+            Trades
+        </button>
+
+        <button
+            type="button"
+            class="nav-button"
+            data-page="signals"
+        >
+            Signals
+        </button>
+
+        <button
+            type="button"
+            class="nav-button"
+            data-page="history"
+        >
+            History
+        </button>
+
+        <button
+            type="button"
+            class="nav-button"
+            data-page="news"
+        >
+            News
+        </button>
+
+        <button
+            type="button"
+            class="nav-button"
+            data-page="tools"
+        >
+            Tools
+        </button>
+
+    </nav>
+
+
+    <!-- =========================================================
+         MAIN CONTENT
+         ========================================================= -->
+
+    <main>
+
+
+        <!-- =====================================================
+             OVERVIEW
+             ===================================================== -->
+
+        <section
+            id="page-overview"
+            class="page active"
+        >
+
+            <div class="page-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        MULTIBOT2
+                    </span>
+
+                    <h1>
+                        Trading Overview
+                    </h1>
+
+                    <p>
+                        Live strategy monitoring and paper-trading status.
+                    </p>
+
+                </div>
+
+                <div class="market-clock">
+
+                    <span>
+                        IST
+                    </span>
+
+                    <strong id="marketClock">
+                        --
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="metric-grid">
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        System
+                    </span>
+
+                    <strong
+                        id="overviewSystem"
+                        class="metric-value positive"
+                    >
+                        ONLINE
+                    </strong>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Signals
+                    </span>
+
+                    <strong
+                        id="overviewSignalCount"
+                        class="metric-value"
+                    >
+                        0
+                    </strong>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Open Trades
+                    </span>
+
+                    <strong
+                        id="overviewTradeCount"
+                        class="metric-value"
+                    >
+                        0
+                    </strong>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Last Update
+                    </span>
+
+                    <strong
+                        id="overviewUpdated"
+                        class="metric-value small"
+                    >
+                        --
+                    </strong>
+
+                </article>
+
+            </div>
+
+
+            <!-- Equity -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Equity
+                    </h2>
+
+                    <span>
+                        Paper account
+                    </span>
+
+                </div>
+
+            </div>
+
+            <article class="panel equity-panel">
+
+                <div class="empty-state">
+                    Equity data will appear here when the
+                    paper-trading account is configured.
+                </div>
+
+            </article>
+
+
+            <!-- Latest signals -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Latest Signals
+                    </h2>
+
+                    <span>
+                        Canonical strategy output
+                    </span>
+
+                </div>
+
+                <button
+                    type="button"
+                    class="text-button"
+                    data-page-link="signals"
+                >
+                    View all
+                </button>
+
+            </div>
+
+            <article
+                id="overviewSignals"
+                class="panel"
+            >
+
+                <div class="empty-state">
+                    No signals loaded.
+                </div>
+
+            </article>
+
+
+            <!-- Open trades -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Open Trades
+                    </h2>
+
+                    <span>
+                        Paper trades
+                    </span>
+
+                </div>
+
+                <button
+                    type="button"
+                    class="text-button"
+                    data-page-link="trades"
+                >
+                    View all
+                </button>
+
+            </div>
+
+            <article
+                id="overviewTrades"
+                class="panel"
+            >
+
+                <div class="empty-state">
+                    No open trades.
+                </div>
+
+            </article>
+
+        </section>
+
+
+
+        <!-- =====================================================
+             TRADES
+             ===================================================== -->
+
+        <section
+            id="page-trades"
+            class="page"
+        >
+
+            <div class="page-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        PAPER TRADING
+                    </span>
+
+                    <h1>
+                        Trades
+                    </h1>
+
+                    <p>
+                        Entry, stop-loss and take-profit from
+                        canonical trade plans.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="trade-summary metric-grid">
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Open
+                    </span>
+
+                    <strong
+                        id="tradesOpenCount"
+                        class="metric-value"
+                    >
+                        0
+                    </strong>
+
+                </article>
+
+
+                <article class="metric-card">
+
+                    <span class="metric-label">
+                        Closed
+                    </span>
+
+                    <strong
+                        id="tradesClosedCount"
+                        class="metric-value"
+                    >
+                        0
+                    </strong>
+
+                </article>
+
+            </div>
+
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Active Trades
+                    </h2>
+
+                </div>
+
+            </div>
+
+            <article
+                id="tradesList"
+                class="panel"
+            >
+
+                <div class="empty-state">
+                    No open trades.
+                </div>
+
+            </article>
+
+        </section>
+
+
+
+        <!-- =====================================================
+             SIGNALS
+             ===================================================== -->
+
+        <section
+            id="page-signals"
+            class="page"
+        >
+
+            <div class="page-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        STRATEGIES
+                    </span>
+
+                    <h1>
+                        Signals
+                    </h1>
+
+                    <p>
+                        Strategy direction and signal freshness.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="signal-legend">
+
+                <span class="legend buy">
+                    BUY
+                </span>
+
+                <span class="legend sell">
+                    SELL
+                </span>
+
+                <span class="legend neutral">
+                    NEUTRAL
+                </span>
+
+                <span class="legend stale">
+                    STALE
+                </span>
+
+            </div>
+
+
+            <article
+                id="signalsList"
+                class="panel"
+            >
+
+                <div class="empty-state">
+                    No signals loaded.
+                </div>
+
+            </article>
+
+        </section>
+
+
+
+        <!-- =====================================================
+             HISTORY
+             ===================================================== -->
+
+        <section
+            id="page-history"
+            class="page"
+        >
+
+            <div class="page-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        RECORDS
+                    </span>
+
+                    <h1>
+                        History
+                    </h1>
+
+                    <p>
+                        Historical signals and completed paper trades.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <article
+                id="historyList"
+                class="panel"
+            >
+
+                <div class="empty-state">
+                    No historical records loaded.
+                </div>
+
+            </article>
+
+        </section>
+
+
+
+        <!-- =====================================================
+             NEWS
+             ===================================================== -->
+
+        <section
+            id="page-news"
+            class="page"
+        >
+
+            <div class="page-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        MARKET
+                    </span>
+
+                    <h1>
+                        News
+                    </h1>
+
+                    <p>
+                        Market information supplied by the configured
+                        data/news source.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <article
+                id="newsList"
+                class="panel"
+            >
+
+                <div class="empty-state">
+                    No news loaded.
+                </div>
+
+            </article>
+
+        </section>
+
+
+
+        <!-- =====================================================
+             TOOLS
+             ===================================================== -->
+
+        <section
+            id="page-tools"
+            class="page"
+        >
+
+            <div class="page-heading">
+
+                <div>
+
+                    <span class="eyebrow">
+                        SYSTEM
+                    </span>
+
+                    <h1>
+                        Tools
+                    </h1>
+
+                    <p>
+                        Strategy diagnostics and backtesting.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- Market schedule -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        NSE 1H Schedule
+                    </h2>
+
+                    <span>
+                        IST candle boundaries
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel">
+
+                <div
+                    id="candleSchedule"
+                    class="schedule-grid"
+                ></div>
+
+            </article>
+
+
+            <!-- Freshness -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Signal Freshness
+                    </h2>
+
+                    <span>
+                        Canonical rule
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel rule-panel">
+
+                <div class="rule-item">
+
+                    <span class="rule-icon fresh">
+                        ✓
+                    </span>
+
+                    <div>
+
+                        <strong>
+                            FRESH
+                        </strong>
+
+                        <p>
+                            Signal age is 1 hour or less.
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="rule-item">
+
+                    <span class="rule-icon stale">
+                        !
+                    </span>
+
+                    <div>
+
+                        <strong>
+                            STALE
+                        </strong>
+
+                        <p>
+                            Signal age is greater than 1 hour.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </article>
+
+
+            <!-- Sweep -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Sweep V2
+                    </h2>
+
+                    <span>
+                        Signal classification
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel rules-list">
+
+                <div class="rule-row">
+
+                    <strong class="buy">
+                        BUY
+                    </strong>
+
+                    <span>
+                        Both sides swept and close above
+                        the previous high.
+                    </span>
+
+                </div>
+
+
+                <div class="rule-row">
+
+                    <strong class="sell">
+                        SELL
+                    </strong>
+
+                    <span>
+                        Both sides swept and close below
+                        the previous low.
+                    </span>
+
+                </div>
+
+
+                <div class="rule-row">
+
+                    <strong class="neutral">
+                        NEUTRAL
+                    </strong>
+
+                    <span>
+                        Both sides swept but close remains
+                        inside the previous range.
+                    </span>
+
+                </div>
+
+
+                <div class="rule-row">
+
+                    <strong>
+                        NO SIGNAL
+                    </strong>
+
+                    <span>
+                        Both sides were not swept.
+                    </span>
+
+                </div>
+
+            </article>
+
+
+            <!-- Backtest -->
+
+            <div class="section-heading">
+
+                <div>
+
+                    <h2>
+                        Backtest
+                    </h2>
+
+                    <span>
+                        Same strategy engine as live evaluation
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <article class="panel">
+
+                <div class="backtest-placeholder">
+
+                    <strong>
+                        Backtest engine ready
+                    </strong>
+
+                    <p>
+                        Entry, risk, fees and slippage are not
+                        invented until their rules are formally frozen.
+                    </p>
+
+                </div>
+
+            </article>
+
+        </section>
+
+    </main>
+
+
+    <!-- =========================================================
+         MOBILE NAVIGATION
+         ========================================================= -->
+
+    <nav class="mobile-nav">
+
+        <button
+            type="button"
+            class="mobile-nav-button active"
+            data-page="overview"
+        >
+            <span>⌂</span>
+            Overview
+        </button>
+
+        <button
+            type="button"
+            class="mobile-nav-button"
+            data-page="trades"
+        >
+            <span>▣</span>
+            Trades
+        </button>
+
+        <button
+            type="button"
+            class="mobile-nav-button"
+            data-page="signals"
+        >
+            <span>◈</span>
+            Signals
+        </button>
+
+        <button
+            type="button"
+            class="mobile-nav-button"
+            data-page="history"
+        >
+            <span>◷</span>
+            History
+        </button>
+
+        <button
+            type="button"
+            class="mobile-nav-button"
+            data-page="news"
+        >
+            <span>◉</span>
+            News
+        </button>
+
+        <button
+            type="button"
+            class="mobile-nav-button"
+            data-page="tools"
+        >
+            <span>⚙</span>
+            Tools
+        </button>
+
+    </nav>
+
+
+    <footer class="footer">
+
+        MULTIBOT2
+        <span>•</span>
+        Paper Trading
+        <span>•</span>
+        Strategy logic remains server-side
+
+    </footer>
+
+</div>
+
+
+<script src="app.js"></script>
+
+</body>
+</html>
