@@ -1,146 +1,109 @@
-"""MULTIBOT2 application entry point and TrendPulse runtime boundary."""
-
+"""Complete MULTIBOT2 application runtime."""
 from __future__ import annotations
-
-import logging
-
+import json,logging,os,threading,time
+from wsgiref.simple_server import make_server
+from urllib import parse,request
 import pandas as pd
+from config import ACCOUNT_NAMES,ACCOUNT_SIZE_INR,ACCOUNT_TRADE_LIMITS,IST_TIMEZONE,NSE_15_SYMBOLS,RISK_PER_TRADE_INR,SIGNAL_FRESHNESS_HOURS,settings,validate_configuration
+from db import DatabaseManager
+from reminders import ReminderService
+from trendpulse_runtime import TrendPulseRuntime
+from trendpulse_service import TrendPulseService
+from sweep_service import SweepService
+from trading import AccountState
+from telegram import TelegramConfig,TelegramMessage,send_message
+logging.basicConfig(level=logging.INFO,format="%(asctime)s | %(levelname)s | %(message)s"); logger=logging.getLogger("multibot2")
+DB=DatabaseManager(settings.db_path); ACCOUNTS={}; ACTIVE=[]; HISTORY=[]; SIGNALS=[]; RUNTIME=None; TREND=None; SWEEP=None; REMINDERS=None; STOP=threading.Event(); LOCK=threading.RLock()
 
-from config import (
-    DEFAULT_TIMEFRAME,
-    IST_TIMEZONE,
-    SIGNAL_FRESHNESS_HOURS,
-    settings,
-    validate_configuration,
-)
-from trendpulse_service import TrendPulseDispatchResult, TrendPulseService
-from yahoo_provider import YahooProvider
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-)
-
-logger = logging.getLogger("multibot2")
-
-_TRENDPULSE_SERVICE: TrendPulseService | None = None
-
-
-def validate_runtime_configuration() -> None:
-    """Validate canonical runtime configuration."""
-
+def now():return pd.Timestamp.now(tz=IST_TIMEZONE)
+def validate_runtime_configuration():
     validate_configuration()
-
-    if settings.timezone != IST_TIMEZONE:
-        raise ValueError(
-            "MULTIBOT2 requires Asia/Kolkata as the canonical timezone"
-        )
-
-    if settings.timeframe != DEFAULT_TIMEFRAME:
-        raise ValueError(
-            "MULTIBOT2 currently requires the 1h canonical timeframe"
-        )
-
-    if settings.freshness_hours != SIGNAL_FRESHNESS_HOURS:
-        raise ValueError(
-            "MULTIBOT2 requires a 1-hour signal freshness boundary"
-        )
-
-    if settings.market_data_provider != "yahoo":
-        raise ValueError(
-            "MULTIBOT2 requires Yahoo Finance as the market-data provider"
-        )
-
-
-def build_market_data_provider() -> YahooProvider:
-    """Build the canonical market-data provider."""
-
-    if settings.market_data_provider != "yahoo":
-        raise ValueError(
-            "Only Yahoo Finance is supported as the canonical provider"
-        )
-
-    return YahooProvider()
-
-
-def build_trendpulse_service() -> TrendPulseService:
-    """Return the process-wide TrendPulse service.
-
-    Keeping one service instance alive preserves the SignalGate duplicate
-    history between scanner cycles within the running process.
-    """
-    global _TRENDPULSE_SERVICE
-
-    validate_runtime_configuration()
-
-    if _TRENDPULSE_SERVICE is None:
-        _TRENDPULSE_SERVICE = TrendPulseService()
-
-    return _TRENDPULSE_SERVICE
-
-
-def run_trendpulse_cycle(
-    *,
-    now: pd.Timestamp | None = None,
-    period: str = "5d",
-    send: bool = True,
-) -> list[TrendPulseDispatchResult]:
-    """Run one complete TrendPulse scan/dispatch cycle.
-
-    ``send=True`` is the production path. Tests and diagnostics can use
-    ``send=False`` to render and validate messages without contacting Telegram.
-    """
-    service = build_trendpulse_service()
-    results = service.scan_universe_and_dispatch(
-        now=now,
-        period=period,
-        send=send,
-    )
-
-    sent = sum(result.sent for result in results)
-    logger.info(
-        "TrendPulse cycle complete: %d symbols, %d Telegram messages sent",
-        len(results),
-        sent,
-    )
+    if settings.timezone!=IST_TIMEZONE or settings.timeframe!="1h" or settings.market_data_provider!="yahoo" or settings.freshness_hours!=1:raise ValueError("Locked MULTIBOT2 runtime configuration violated")
+def init_state():
+    global ACCOUNTS,ACTIVE,HISTORY
+    today=now().date().isoformat(); rows=DB.load_accounts(ACCOUNT_NAMES,ACCOUNT_SIZE_INR,today)
+    ACCOUNTS={n:AccountState(n,float(rows[n]["starting_balance"]),float(rows[n]["balance"]),float(rows[n]["planned_risk_used"]),int(rows[n]["trades_today"])) for n in ACCOUNT_NAMES}
+    ACTIVE=DB.load_trades("OPEN"); HISTORY=DB.load_trades("CLOSED")
+def persist_account(a):DB.save_account(a.name,balance=a.balance,trades_today=a.trades_today,planned_risk_used=a.planned_risk_used,reset_date=now().date().isoformat())
+def trade_row(result):
+    t=result.trade; p=t.plan; return {"id":f"{result.account}_{result.symbol}_{int(time.time()*1000)}","status":"OPEN","symbol":result.symbol,"account":result.account,"strategy":p.strategy,"type":p.side,"entry":p.entry,"sl":p.stop_loss,"tp":p.take_profit,"qty":t.quantity,"signal_ts":p.signal_timestamp.isoformat(),"opened_at":now().isoformat()}
+def record_result(result):
+    if not result.sent:return
+    row=trade_row(result); ACTIVE.append(row); DB.save_trade(row["id"],"OPEN",row,row["opened_at"]); persist_account((TREND.accounts if result.account=="nifty" else SWEEP.accounts)[result.account])
+def run_trendpulse_cycle(*,now_at=None,send=True,period="30d"):
+    results=TREND.scan_universe_and_dispatch(now=now_at,period=period,send=send,account_name="nifty")
+    for r in results:
+        if r.signal.signal in ("BUY","SELL"):
+            SIGNALS.append({"strategy":r.signal.strategy,"symbol":r.symbol,"signal":r.signal.signal,"timestamp":r.signal.timestamp.isoformat(),"reason":r.signal.reason})
+            record_result(r)
     return results
-
-
-def main() -> None:
-    """Validate and initialize MULTIBOT2 without automatically sending signals."""
-
-    validate_runtime_configuration()
-
-    market_data_provider = build_market_data_provider()
-
-    logger.info("MULTIBOT2 starting")
-    logger.info(
-        "Timezone: %s",
-        settings.timezone,
-    )
-    logger.info(
-        "Timeframe: %s",
-        settings.timeframe,
-    )
-    logger.info(
-        "Signal freshness: %s hour",
-        settings.freshness_hours,
-    )
-    logger.info("Market-data provider: Yahoo Finance")
-    logger.info(
-        "Yahoo provider initialized: %s",
-        type(market_data_provider).__name__,
-    )
-    logger.info(
-        "Telegram: %s",
-        "CONFIGURED"
-        if settings.telegram_bot_token
-        and settings.telegram_chat_id
-        else "NOT_CONFIGURED",
-    )
-    logger.info("MULTIBOT2 runtime initialized")
-
-
-if __name__ == "__main__":
-    main()
+def run_sweep_cycle(*,now_at=None,send=True,period="30d"):
+    results=SWEEP.scan_universe_and_dispatch(now=now_at,period=period,send=send)
+    for r in results:
+        SIGNALS.append({"strategy":r.signal.strategy,"symbol":r.symbol,"signal":r.signal.signal,"timestamp":r.signal.timestamp.isoformat(),"reason":r.signal.reason})
+        record_result(r)
+    return results
+def _price(symbol):
+    try:
+        data=RUNTIME.provider.fetch(f"{symbol}.NS",period="1d",interval="1m",validate_hourly=False); return None if data.empty else float(data.close.iloc[-1])
+    except Exception:return None
+def monitor_once():
+    for row in list(ACTIVE):
+        live=_price(row["symbol"])
+        if live is None:continue
+        long=row["type"]=="BUY"; sl=float(row["sl"]); tp=float(row["tp"]); hit_tp=live>=tp if long else live<=tp; hit_sl=live<=sl if long else live>=sl
+        if not (hit_tp or hit_sl):continue
+        pnl=(live-row["entry"])*row["qty"] if long else (row["entry"]-live)*row["qty"]; row.update(status="CLOSED",exit_price=live,pnl=pnl,exit_reason="TP" if hit_tp else "SL",closed_at=now().isoformat()); ACTIVE.remove(row); HISTORY.insert(0,row); DB.save_trade(row["id"],"CLOSED",row,row["closed_at"])
+        a=ACCOUNTS[row["account"]]; ACCOUNTS[row["account"]]=AccountState(a.name,a.starting_balance,a.balance+pnl,a.planned_risk_used,a.trades_today); persist_account(ACCOUNTS[row["account"]])
+def scanner_loop():
+    while not STOP.is_set():
+        try:
+            if now().weekday()<5: run_trendpulse_cycle(send=True); run_sweep_cycle(send=True)
+        except Exception:logger.exception("scanner cycle failed")
+        STOP.wait(settings.scan_interval_seconds)
+def monitor_loop():
+    while not STOP.is_set():
+        try:monitor_once()
+        except Exception:logger.exception("monitor cycle failed")
+        STOP.wait(settings.monitor_interval_seconds)
+def snapshot():
+    with LOCK:
+        return {"system":{"status":"ONLINE","mode":"PAPER","timezone":IST_TIMEZONE,"timeframe":"1h","leverage":1},"rules":{"account_size_inr":ACCOUNT_SIZE_INR,"risk_per_trade_inr":RISK_PER_TRADE_INR,"account_trade_limits":dict(ACCOUNT_TRADE_LIMITS),"signal_freshness_hours":1},"universe":{"count":15,"symbols":list(NSE_15_SYMBOLS),"fixed":True},"accounts":[{"name":a.name,"balance":a.balance,"trades_today":a.trades_today,"daily_trade_limit":a.daily_trade_limit,"remaining_trades":a.remaining_trades,"planned_risk_used":a.planned_risk_used} for a in ACCOUNTS.values()],"signals":list(reversed(SIGNALS[-500:])),"trades":ACTIVE+HISTORY[:200],"counts":{"open_trades":len(ACTIVE),"closed_trades":len(HISTORY)},"generated_at":now().isoformat()}
+def web_server():
+    html=os.path.join(os.path.dirname(__file__),"dashboard.html"); js=os.path.join(os.path.dirname(__file__),"app.js"); css=os.path.join(os.path.dirname(__file__),"styles.css")
+    def app(env,start):
+        path=env.get("PATH_INFO","/")
+        if path=="/api/health":body=json.dumps({"ok":True,"status":"ONLINE","timestamp":now().isoformat()}).encode(); typ="application/json"
+        elif path=="/api/dashboard":body=json.dumps(snapshot(),default=str).encode(); typ="application/json"
+        elif path=="/":body=open(html,"rb").read(); typ="text/html; charset=utf-8"
+        elif path=="/app.js":body=open(js,"rb").read(); typ="application/javascript"
+        elif path=="/styles.css":body=open(css,"rb").read(); typ="text/css"
+        else:start("404 Not Found",[("Content-Type","text/plain")]);return [b"Not found"]
+        start("200 OK",[("Content-Type",typ),("Cache-Control","no-store")]);return [body]
+    make_server("0.0.0.0",int(os.getenv("PORT","10000")),app).serve_forever()
+def telegram_commands():
+    token=settings.telegram_bot_token
+    if not token:return
+    offset=0
+    while not STOP.is_set():
+        try:
+            q=parse.urlencode({"timeout":20,"offset":offset}).encode(); req=request.Request(f"https://api.telegram.org/bot{token}/getUpdates",data=q,method="POST")
+            with request.urlopen(req,timeout=30) as r:data=json.loads(r.read())
+            for u in data.get("result",[]):
+                offset=u["update_id"]+1; m=u.get("message",{}); chat=m.get("chat",{}).get("id"); cmd=str(m.get("text","")).split()[0].split("@")[0].lower() if m.get("text") else ""
+                if not chat:continue
+                if cmd=="/start":text="🤖 MULTIBOT2\n/check · /balance · /summary · /risk · /stats"
+                elif cmd=="/check":threading.Thread(target=lambda:run_trendpulse_cycle(send=True),daemon=True).start();text="🔍 Scan started."
+                elif cmd=="/balance":text="\n".join(f"{a.name}: ₹{a.balance:,.2f} | {a.trades_today}/{a.daily_trade_limit}" for a in ACCOUNTS.values())
+                elif cmd=="/summary":text=f"Open trades: {len(ACTIVE)}\nClosed trades: {len(HISTORY)}"
+                elif cmd=="/risk":text=f"Open planned risk: ₹{sum(abs(float(x['entry'])-float(x['sl']))*float(x['qty']) for x in ACTIVE):,.2f}"
+                elif cmd=="/stats":text=f"Trades: {len(HISTORY)}\nP/L: ₹{sum(float(x.get('pnl',0)) for x in HISTORY):,.2f}"
+                else:continue
+                data=parse.urlencode({"chat_id":chat,"text":text}).encode();request.urlopen(request.Request(f"https://api.telegram.org/bot{token}/sendMessage",data=data,method="POST"),timeout=15).read()
+        except Exception:STOP.wait(5)
+def main():
+    global RUNTIME,TREND,SWEEP,REMINDERS
+    validate_runtime_configuration();init_state();RUNTIME=TrendPulseRuntime();TREND=TrendPulseService(runtime=RUNTIME,database=DB,accounts=ACCOUNTS);SWEEP=SweepService(runtime=RUNTIME,database=DB,accounts=ACCOUNTS);REMINDERS=ReminderService(DB)
+    threading.Thread(target=web_server,daemon=True,name="dashboard").start();threading.Thread(target=scanner_loop,daemon=True,name="scanner").start();threading.Thread(target=monitor_loop,daemon=True,name="monitor").start();threading.Thread(target=telegram_commands,daemon=True,name="telegram").start();REMINDERS.start();logger.info("MULTIBOT2 fully started: NSE-15, Yahoo, 1H, 1h freshness, paper mode")
+    while True:time.sleep(3600)
+if __name__=="__main__":main()
