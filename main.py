@@ -24,6 +24,8 @@ logging.basicConfig(
 
 logger = logging.getLogger("multibot2")
 
+_TRENDPULSE_SERVICE: TrendPulseService | None = None
+
 
 def validate_runtime_configuration() -> None:
     """Validate canonical runtime configuration."""
@@ -63,9 +65,19 @@ def build_market_data_provider() -> YahooProvider:
 
 
 def build_trendpulse_service() -> TrendPulseService:
-    """Build the canonical TrendPulse -> paper trade -> Telegram service."""
+    """Return the process-wide TrendPulse service.
+
+    Keeping one service instance alive preserves the SignalGate duplicate
+    history between scanner cycles within the running process.
+    """
+    global _TRENDPULSE_SERVICE
+
     validate_runtime_configuration()
-    return TrendPulseService()
+
+    if _TRENDPULSE_SERVICE is None:
+        _TRENDPULSE_SERVICE = TrendPulseService()
+
+    return _TRENDPULSE_SERVICE
 
 
 def run_trendpulse_cycle(
