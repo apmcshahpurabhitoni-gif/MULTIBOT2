@@ -292,13 +292,17 @@ def build_trade_fields(trade: PaperTrade) -> dict[str, object]:
 
 
 def send_message(message: TelegramMessage, config: TelegramConfig) -> None:
-    """Send one Telegram message using the Bot API."""
+    """Send one approved Telegram message using Markdown formatting."""
     if not message.text.strip():
         raise TelegramTemplateError("Cannot send an empty Telegram message")
 
     endpoint = f"https://api.telegram.org/bot{config.bot_token}/sendMessage"
     payload = parse.urlencode(
-        {"chat_id": config.chat_id, "text": message.text}
+        {
+            "chat_id": config.chat_id,
+            "text": message.text,
+            "parse_mode": "Markdown",
+        }
     ).encode("utf-8")
     http_request = request.Request(
         endpoint,
