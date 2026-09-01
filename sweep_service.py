@@ -1,0 +1,64 @@
+"""Complete Sweep V2 runtime and dispatch service."""
+from __future__ import annotations
+from dataclasses import dataclass
+from threading import RLock
+import pandas as pd
+from config import ACCOUNT_SIZE_INR, ACCOUNT_NAMES, ACCOUNT_TRADE_LIMITS, IST_TIMEZONE, NSE_15_SYMBOLS, RISK_PER_TRADE_INR
+from db import DatabaseManager
+from signal_gate import SignalGate
+from market_data import MarketDataError
+from strategies import StrategySignal, sweep_v2_from_frame
+from telegram import TelegramConfig, TelegramMessage, render_signal_message, send_message
+from trading import AccountState, PaperTrade, TradePlan, can_open_trade, register_trade
+from trendpulse_runtime import TrendPulseRuntime
+@dataclass(frozen=True)
+class SweepDispatchResult:
+    symbol:str; signal:StrategySignal; trade:PaperTrade|None; message:TelegramMessage|None; sent:bool; reason:str; account:str="sweep_4h"
+class SweepService:
+    DEFAULT_ACCOUNT="sweep_4h"
+    def __init__(self,*,runtime:TrendPulseRuntime|None=None,telegram_config:TelegramConfig|None=None,database:DatabaseManager|None=None,accounts:dict[str,AccountState]|None=None)->None:
+        self.runtime=runtime or TrendPulseRuntime(); self.telegram_config=telegram_config; self.database=database or DatabaseManager(); self.gate=SignalGate(); self._lock=RLock()
+        if accounts is not None:self.accounts=accounts
+        else:
+            today=pd.Timestamp.now(tz=IST_TIMEZONE).date().isoformat(); rows=self.database.load_accounts(ACCOUNT_NAMES,ACCOUNT_SIZE_INR,today); self.accounts={n:AccountState(n,float(rows[n]["starting_balance"]),float(rows[n]["balance"]),float(rows[n]["planned_risk_used"]),int(rows[n]["trades_today"])) for n in ACCOUNT_NAMES}
+    def scan_symbol(self,symbol:str,*,period:str="30d"):
+        normalized=symbol.strip().upper()
+        if normalized not in NSE_15_SYMBOLS:raise MarketDataError(f"Symbol is outside fixed NSE-15 universe: {normalized}")
+        one=self.runtime.fetch_symbol_1h(normalized,period=period); four=self.runtime._build_4h(one); return sweep_v2_from_frame(four),four
+    def _config(self):return self.telegram_config or TelegramConfig.from_env()
+    def dispatch(self,symbol:str,signal:StrategySignal,candles_4h:pd.DataFrame,*,current_price:float,now:pd.Timestamp|None=None,send:bool=True,account_name:str=DEFAULT_ACCOUNT)->SweepDispatchResult:
+        current=pd.Timestamp.now(tz=IST_TIMEZONE) if now is None else pd.Timestamp(now)
+        if current.tzinfo is None:raise ValueError("Current timestamp must be timezone-aware")
+        current=current.tz_convert(IST_TIMEZONE); account=self.accounts.get(account_name)
+        if account is None:raise ValueError(f"Unknown account: {account_name}")
+        if signal.signal not in ("BUY","SELL"):return SweepDispatchResult(symbol,signal,None,None,False,"NO_DIRECTIONAL_SIGNAL",account_name)
+        if not self.gate.is_fresh(signal,now=current):return SweepDispatchResult(symbol,signal,None,None,False,"STALE_SIGNAL",account_name)
+        key=self.gate.signal_key(signal,symbol=symbol)
+        with self._lock:
+            if self.database.signal_count(key)>=2 or not self.gate.can_send(signal,symbol=symbol,now=current):return SweepDispatchResult(symbol,signal,None,None,False,"DUPLICATE_SIGNAL_LIMIT",account_name)
+            if not can_open_trade(account):return SweepDispatchResult(symbol,signal,None,None,False,"ACCOUNT_DAILY_LIMIT",account_name)
+            if candles_4h.empty:return SweepDispatchResult(symbol,signal,None,None,False,"MISSING_SIGNAL_CANDLE",account_name)
+            candle=candles_4h.iloc[-1]; entry=float(current_price)
+            if signal.signal=="BUY":sl=float(candle.low); distance=entry-sl; tp=entry+distance*2
+            else:sl=float(candle.high); distance=sl-entry; tp=entry-distance*2
+            if distance<=0:return SweepDispatchResult(symbol,signal,None,None,False,"INVALID_SWEEP_RISK",account_name)
+            qty=RISK_PER_TRADE_INR/distance; plan=TradePlan("Sweep V2",signal.signal,signal.timestamp,entry,sl,tp); trade=PaperTrade(plan=plan,account=account_name,quantity=qty)
+            age_m=int(self.gate.age_hours(signal,now=current)*60); age=f"{age_m} min ago" if age_m<60 else f"{age_m//60} hr {age_m%60} min ago"
+            message=render_signal_message(signal,symbol=f"{symbol}.NS",asset=symbol,market="NSE",timeframe="4H",entry=entry,stop_loss=sl,take_profit=tp,quantity=qty,risk=trade.planned_risk,account=account_name,freshness="FRESH",age_str=age)
+            if not send:return SweepDispatchResult(symbol,signal,trade,message,False,"READY_TO_SEND",account_name)
+            send_message(message,self._config()); self.gate.accept(signal,symbol=symbol,now=current); self.database.record_signal_send(key,current.isoformat(),(current+pd.Timedelta(hours=1)).isoformat(),message.text,{"symbol":symbol,"strategy":"Sweep V2"})
+            updated=register_trade(account,planned_risk=trade.planned_risk); self.accounts[account_name]=updated; self.database.save_account(account_name,balance=updated.balance,trades_today=updated.trades_today,planned_risk_used=updated.planned_risk_used,reset_date=current.date().isoformat())
+            return SweepDispatchResult(symbol,signal,trade,message,True,"SENT_AND_ACCEPTED",account_name)
+    def scan_universe_and_dispatch(self,*,now:pd.Timestamp|None=None,period:str="30d",send:bool=True)->list[SweepDispatchResult]:
+        out=[]
+        for symbol in NSE_15_SYMBOLS:
+            try:
+                signal,frame=self.scan_symbol(symbol,period=period)
+                if signal.signal not in ("BUY","SELL"):continue
+                current_data=self.runtime.provider.fetch(f"{symbol}.NS",period="1d",interval="1m",validate_hourly=False)
+                if current_data.empty:continue
+                result=self.dispatch(symbol,signal,frame,current_price=float(current_data.close.iloc[-1]),now=now,send=send); out.append(result)
+            except Exception:
+                continue
+        return out
+__all__=["SweepDispatchResult","SweepService"]
