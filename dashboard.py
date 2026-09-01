@@ -11,8 +11,8 @@ from typing import Any, Iterable
 from config import (
     ACCOUNT_NAMES,
     ACCOUNT_SIZE_INR,
+    ACCOUNT_TRADE_LIMITS,
     LEVERAGE,
-    MAX_TRADES_PER_DAY,
     NSE_15_SYMBOLS,
     RISK_PER_TRADE_INR,
 )
@@ -68,22 +68,22 @@ def account_to_dict(
 ) -> dict[str, Any]:
     """Convert account state to dashboard-safe data."""
 
+    daily_limit = account.daily_trade_limit
+
     return {
         "name": account.name,
         "starting_balance": account.starting_balance,
         "planned_risk_used": account.planned_risk_used,
+        "daily_trade_limit": daily_limit,
+        "max_daily_planned_risk": account.max_daily_planned_risk,
         "trades_today": account.trades_today,
         "remaining_trades": max(
             0,
-            MAX_TRADES_PER_DAY
-            - account.trades_today,
+            daily_limit - account.trades_today,
         ),
         "remaining_planned_risk": max(
             0,
-            (
-                RISK_PER_TRADE_INR
-                * MAX_TRADES_PER_DAY
-            )
+            account.max_daily_planned_risk
             - account.planned_risk_used,
         ),
     }
@@ -135,11 +135,7 @@ def build_dashboard_snapshot(
         "rules": {
             "account_size_inr": ACCOUNT_SIZE_INR,
             "risk_per_trade_inr": RISK_PER_TRADE_INR,
-            "max_trades_per_day": MAX_TRADES_PER_DAY,
-            "max_daily_planned_risk_inr": (
-                RISK_PER_TRADE_INR
-                * MAX_TRADES_PER_DAY
-            ),
+            "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS),
         },
 
         "universe": {
