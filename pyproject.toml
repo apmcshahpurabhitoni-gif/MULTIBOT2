@@ -32,4 +32,5 @@ py-modules = [
     "telegram",
     "backtest",
     "dashboard",
+    "zerodha_provider",
 ]
