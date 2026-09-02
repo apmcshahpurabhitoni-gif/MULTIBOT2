@@ -65,6 +65,7 @@ class AssetConfig:
     yahoo_symbol: str
     market: str
     asset_type: str
+    group: str = "NSE Stocks"
 
     # TrendPulse
     trendpulse_signal_timeframe: str = "1H"
@@ -81,6 +82,7 @@ def _equity(symbol: str) -> AssetConfig:
         yahoo_symbol=f"{symbol}.NS",
         market="NSE",
         asset_type="equity",
+        group="NSE Stocks",
         sweep_timeframe="4H",
     )
 
@@ -94,6 +96,7 @@ LIVE_ASSETS: tuple[AssetConfig, ...] = tuple(
         yahoo_symbol="^NSEI",
         market="NSE",
         asset_type="index",
+        group="NSE Indices",
         sweep_timeframe="1H",
     ),
     AssetConfig(
@@ -102,6 +105,7 @@ LIVE_ASSETS: tuple[AssetConfig, ...] = tuple(
         yahoo_symbol="^NSEBANK",
         market="NSE",
         asset_type="index",
+        group="NSE Indices",
         sweep_timeframe="1H",
     ),
     AssetConfig(
@@ -110,6 +114,7 @@ LIVE_ASSETS: tuple[AssetConfig, ...] = tuple(
         yahoo_symbol="GC=F",
         market="Gold",
         asset_type="commodity",
+        group="Global Markets",
         sweep_timeframe="4H",
     ),
     AssetConfig(
@@ -118,6 +123,7 @@ LIVE_ASSETS: tuple[AssetConfig, ...] = tuple(
         yahoo_symbol="BTC-USD",
         market="Crypto",
         asset_type="crypto",
+        group="Global Markets",
         sweep_timeframe="4H",
     ),
 )
@@ -187,6 +193,7 @@ BACKTEST_ASSETS = {
         "ticker": asset.yahoo_symbol,
         "market": asset.market,
         "asset_type": asset.asset_type,
+        "group": asset.group,
         "trendpulse_signal_timeframe": asset.trendpulse_signal_timeframe,
         "trendpulse_filter_timeframe": asset.trendpulse_filter_timeframe,
         "sweep_timeframe": asset.sweep_timeframe,

@@ -2,13 +2,13 @@
 
 Complete paper-trading bot based on the original `multi-strategy-telegram-bot`, with the locked MULTIBOT2 fixes applied as one coherent runtime.
 
-**Current release: v1.1.0**
+**Current release: v2.0.0**
 
-## What's new in v1.1.0
+## What's new in v2.0.0
 
 - Forex Factory economic calendar in the dashboard, filtered by exact date and impact (High / Medium / Low / Holiday).
 - Calendar timestamps are normalized to Asia/Kolkata for the dashboard while preserving the Forex Factory source link.
-- Historical backtesting now supports the fixed 19-asset live universe plus Bitcoin (`BTC-USD`) and Gold Futures (`GC=F`).
+- Historical backtesting now supports the fixed 19-asset live universe (15 NSE stocks + NIFTY + BANK NIFTY + Gold + Bitcoin) plus Bitcoin (`BTC-USD`) and Gold Futures (`GC=F`).
 - Backtest results show directional totals, trades taken, planned risk and a daily signal graph.
 - Fixed the modern `yfinance` / `curl_cffi` session incompatibility that was causing historical backtests to fail.
 - Period-aware Yahoo caching prevents a previous 30-day fetch from being reused for a different backtest period.
@@ -56,11 +56,11 @@ Backtesting is informational and does not change live trading configuration.
 
 Supported Yahoo assets:
 
-- 19 live assets: the fixed live symbols using `.NS` tickers.
+- 19 live assets: 15 NSE stocks, NIFTY 50, BANK NIFTY, Gold (`GC=F`) and Bitcoin (`BTC-USD`). NSE stocks use `.NS`; global/index assets use their native Yahoo tickers.
 - Bitcoin: `BTC-USD`.
 - Gold Futures: `GC=F`.
 
-Backtests use real Yahoo 1H candles and the canonical TrendPulse or Sweep V2 strategy functions. NSE candles retain canonical session validation; 24/7 Bitcoin and Gold data use generic confirmed hourly observations rather than being forced through NSE session rules.
+TrendPulse backtests use the same canonical close-stamped 1H path as live. Sweep V2 backtests use market-specific raw Yahoo data and the exact configured schedule boundaries. Global Sweep V2 uses 30-minute Yahoo data for the 01:30/05:30/... or 02:30/06:30/... IST 4H windows; 90d/1y global Sweep backtests are rejected because Yahoo does not provide enough 30m history for those periods.
 
 ## Runtime components
 

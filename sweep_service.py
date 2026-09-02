@@ -127,7 +127,7 @@ class SweepService:
         asset,
         period="30d",
     ):
-        return self.runtime.fetch_symbol_1h(
+        return self.runtime.fetch_sweep_frame(
             asset.symbol,
             period=period,
         )

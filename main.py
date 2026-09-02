@@ -191,7 +191,9 @@ def monitor_once() -> None:
 def scanner_loop() -> None:
     while not STOP.is_set():
         try:
-            if now().weekday() < 5 and not NEWS_PAUSE_ENABLED:
+            if not NEWS_PAUSE_ENABLED:
+                # Global assets (Gold/BTC) trade outside the NSE weekday session.
+                # NSE assets simply produce no fresh directional signal when closed.
                 run_trendpulse_cycle(send=True)
                 run_sweep_cycle(send=True)
         except Exception:
@@ -220,20 +222,30 @@ def _backtest_payload(strategy: str, symbol: str, period: str) -> dict:
     if period not in {"5d", "30d", "60d", "90d", "1y"}:
         raise ValueError("period must be one of 5d, 30d, 60d, 90d or 1y")
     live_asset = LIVE_ASSET_MAP[symbol]
-    if live_asset.market == "NSE":
+    if strategy_key == "trendpulse":
+        # TrendPulse consumes the same canonical close-stamped 1H path as live.
         frame = RUNTIME.fetch_symbol_1h(symbol, period=period)
+        result = trendpulse_backtest(frame, account="nifty")
     else:
+        # Sweep V2 requires its market-specific schedule boundaries, so the
+        # backtest consumes raw provider data and lets sweep_engine construct
+        # only complete scheduled candles.
+        if live_asset.market == "NSE":
+            interval = "1h"
+        else:
+            if period in {"90d", "1y"}:
+                raise ValueError(
+                    "Sweep V2 global backtests require 5d, 30d or 60d because "
+                    "Yahoo 30m history is limited; choose a shorter period."
+                )
+            interval = "30m"
         frame = RUNTIME.provider.fetch(
             live_asset.yahoo_symbol,
             period=period,
-            interval="1h",
+            interval=interval,
             validate_hourly=False,
         )
-    result = (
-        trendpulse_backtest(frame, account="nifty")
-        if strategy_key == "trendpulse"
-        else sweep_backtest(frame, symbol=symbol, account="sweep_4h")
-    )
+        result = sweep_backtest(frame, symbol=symbol, account="sweep_4h")
     daily: dict[str, dict[str, int]] = {}
     rows = []
     for item in result.signals:
@@ -361,7 +373,7 @@ def _handle_command(chat_id: str, cmd: str) -> None:
         elif cmd == "/test":
             ensure_runtime()
             test = _price("RELIANCE")
-            _send_chat(chat_id, msg_test(test is not None, "RELIANCE.NS price feed responded." if test is not None else "RELIANCE.NS price feed did not respond."))
+            _send_chat(chat_id, msg_test(test is not None, "RELIANCE price feed responded." if test is not None else "RELIANCE price feed did not respond."))
     except Exception as exc:
         logger.exception("Telegram command failed")
         try:

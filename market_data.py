@@ -220,7 +220,7 @@ def candles_from_records(
 def validate_symbol(
     symbol: str,
 ) -> str:
-    """Normalize and validate an NSE symbol."""
+    """Normalize and validate a locked MULTIBOT2 live symbol."""
 
     if not isinstance(symbol, str):
         raise TypeError(
@@ -401,6 +401,114 @@ def fetch_nse_hourly(
         minute_data
     )
 
+
+
+
+def build_nse_hourly_from_provider_hourly(
+    hourly_frame: pd.DataFrame,
+) -> pd.DataFrame:
+    """Canonicalize Yahoo's native NSE 1H bars when minute history is unavailable.
+
+    Yahoo may label an hourly interval by its opening timestamp (09:15, 10:15,
+    ... 14:15). We convert those to the locked close timestamps. If the source
+    is already close-stamped, it is retained. Only the six canonical session
+    bars are accepted.
+    """
+    frame = normalize_candles(hourly_frame)
+    if frame.empty:
+        return frame
+    rows = []
+    for day in sorted(set(frame.index.date)):
+        day_start = pd.Timestamp(day).tz_localize(IST_TIMEZONE)
+        g = frame[(frame.index >= day_start + pd.Timedelta(hours=9, minutes=15)) &
+                  (frame.index < day_start + pd.Timedelta(hours=15, minutes=30))].sort_index()
+        if g.empty:
+            continue
+        opens = [
+            day_start + pd.Timedelta(hours=9, minutes=15),
+            day_start + pd.Timedelta(hours=10, minutes=15),
+            day_start + pd.Timedelta(hours=11, minutes=15),
+            day_start + pd.Timedelta(hours=12, minutes=15),
+            day_start + pd.Timedelta(hours=13, minutes=15),
+            day_start + pd.Timedelta(hours=14, minutes=15),
+        ]
+        closes = [x + pd.Timedelta(hours=1) for x in opens]
+        idx = list(g.index)
+        if idx == opens:
+            for start, close_ts in zip(opens, closes):
+                row = g.loc[start]
+                rows.append({
+                    "timestamp": close_ts,
+                    "open": float(row.open),
+                    "high": float(row.high),
+                    "low": float(row.low),
+                    "close": float(row.close),
+                })
+        elif idx == closes:
+            for close_ts in closes:
+                row = g.loc[close_ts]
+                rows.append({
+                    "timestamp": close_ts,
+                    "open": float(row.open),
+                    "high": float(row.high),
+                    "low": float(row.low),
+                    "close": float(row.close),
+                })
+    if not rows:
+        return pd.DataFrame(columns=list(REQUIRED_OHLC),
+                            index=pd.DatetimeIndex([], tz=IST_TIMEZONE))
+    return candles_from_records(rows)
+
+def build_global_hourly_candles(
+    intraday_frame: pd.DataFrame,
+    *,
+    anchor_minute: int = 30,
+    as_of: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """Build complete global 1H candles on the locked :30 boundary.
+
+    Each candle contains two complete 30-minute provider bars and is
+    timestamped at its close. Incomplete candles are never returned.
+    """
+    frame = normalize_candles(intraday_frame)
+    if frame.empty:
+        return frame
+    if not 0 <= int(anchor_minute) <= 59:
+        raise MarketDataError("anchor_minute must be between 0 and 59")
+    if as_of is not None:
+        as_of = pd.Timestamp(as_of)
+        if as_of.tzinfo is None:
+            raise MarketDataError("as_of must be timezone-aware")
+        as_of = as_of.tz_convert(IST_TIMEZONE)
+
+    rows: list[dict] = []
+    for day in sorted(set(frame.index.date)):
+        day_start = pd.Timestamp(day).tz_localize(IST_TIMEZONE)
+        start = day_start + pd.Timedelta(minutes=anchor_minute)
+        while start < day_start + pd.Timedelta(days=1):
+            end = start + pd.Timedelta(hours=1)
+            if as_of is not None and end > as_of:
+                break
+            group = frame[(frame.index >= start) & (frame.index < end)].sort_index()
+            expected = pd.date_range(
+                start=start, periods=2, freq="30min", tz=IST_TIMEZONE
+            )
+            if len(group) == 2 and group.index.equals(expected):
+                rows.append({
+                    "timestamp": end,
+                    "open": float(group.open.iloc[0]),
+                    "high": float(group.high.max()),
+                    "low": float(group.low.min()),
+                    "close": float(group.close.iloc[-1]),
+                })
+            start += pd.Timedelta(hours=1)
+
+    if not rows:
+        return pd.DataFrame(
+            columns=list(REQUIRED_OHLC),
+            index=pd.DatetimeIndex([], tz=IST_TIMEZONE),
+        )
+    return candles_from_records(rows)
 
 def candle_age_hours(
     timestamp: pd.Timestamp,

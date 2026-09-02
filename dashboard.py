@@ -145,6 +145,19 @@ def build_dashboard_snapshot(
             "symbols": list(LIVE_SYMBOLS),
             "nse_stocks": list(NSE_15_SYMBOLS),
             "fixed": True,
+            "asset_metadata": [
+                {
+                    "symbol": asset.symbol,
+                    "label": asset.label,
+                    "ticker": asset.yahoo_symbol,
+                    "market": asset.market,
+                    "asset_type": asset.asset_type,
+                    "group": asset.group,
+                    "trendpulse": "1H + confirmed 4H",
+                    "sweep": asset.sweep_timeframe,
+                }
+                for asset in LIVE_ASSETS
+            ],
         },
 
         "accounts": {

@@ -23,3 +23,30 @@ def test_runtime_universe_is_exactly_19_assets():
     from config import LIVE_SYMBOLS
     assert len(LIVE_SYMBOLS) == 19
     assert len(set(LIVE_SYMBOLS)) == 19
+
+
+def test_runtime_scans_all_19_symbols(monkeypatch):
+    from config import LIVE_ASSETS
+    runtime = TrendPulseRuntime()
+    monkeypatch.setattr(
+        runtime, "scan_symbol",
+        lambda symbol, **kwargs: __import__("trendpulse_runtime").TrendPulseScanResult(
+            symbol,
+            StrategySignal("TrendPulse","NO_SIGNAL",pd.Timestamp("2026-09-01 10:15+05:30"),"TEST"),
+            False, False, "NO_SIGNAL"
+        ),
+    )
+    result = runtime.scan_universe(now=pd.Timestamp("2026-09-01 12:00+05:30"))
+    assert [x.symbol for x in result] == [a.symbol for a in LIVE_ASSETS]
+
+def test_global_1h_input_is_close_stamped_and_complete(monkeypatch):
+    from market_data import build_global_hourly_candles
+    class Provider:
+        def fetch(self, symbol, **kwargs):
+            idx = pd.date_range("2026-09-01 01:30", periods=6, freq="30min", tz="Asia/Kolkata")
+            close = pd.Series(range(100,106), index=idx, dtype=float)
+            return pd.DataFrame({"open":close-.5,"high":close+1,"low":close-1,"close":close}, index=idx)
+    runtime = TrendPulseRuntime(provider=Provider())
+    out = runtime.fetch_symbol_1h("BTC-USD", period="30d")
+    assert len(out) == 3
+    assert all(ts.minute == 30 for ts in out.index)

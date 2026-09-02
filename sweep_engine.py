@@ -1,70 +1,245 @@
-"""Canonical Sweep candle engine copied from the verified original repository.
-No FVG logic: Sweep is only the two-sided liquidity sweep plus close classification.
+"""Canonical Sweep V2 candle engine.
+
+Sweep V2 is intentionally narrow: two-sided liquidity sweep followed by
+final-close classification. No FVG, pending-sweep or persistence logic lives
+here.
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
-from datetime import datetime
 import pandas as pd
-from config import IST_TIMEZONE, LIVE_ASSET_MAP
+
+from config import (
+    GOLD_SWEEP_HOURS_IST,
+    BTC_SWEEP_HOURS_IST,
+    IST_TIMEZONE,
+    LIVE_ASSET_MAP,
+    NSE_INDEX_SWEEP_HOURS_IST,
+    SWEEP_MINUTE_GLOBAL,
+    SWEEP_MINUTE_NSE,
+)
+from market_data import normalize_candles
+
 
 @dataclass(frozen=True)
 class SweepResult:
-    direction:str; timeframe:str; candle_start:pd.Timestamp; candle_end:pd.Timestamp; previous:dict; current:dict; high_swept:bool; low_swept:bool; schedule_warning:str|None=None
+    direction: str
+    timeframe: str
+    candle_start: pd.Timestamp
+    candle_end: pd.Timestamp
+    previous: dict
+    current: dict
+    high_swept: bool
+    low_swept: bool
+    schedule_warning: str | None = None
 
-def _ist(df):
-    out=df.copy();idx=pd.DatetimeIndex(out.index);idx=idx.tz_localize("UTC") if idx.tz is None else idx.tz_convert(IST_TIMEZONE);out.index=idx;return out.sort_index()
-def _ohlc(g):return {"open":float(g.open.iloc[0]),"high":float(g.high.max()),"low":float(g.low.min()),"close":float(g.close.iloc[-1])}
-def _starts(now,hours,minute):
-    out=[];day=now.normalize()-pd.Timedelta(days=3)
-    while day<=now.normalize():
-        for h in hours:out.append(day+pd.Timedelta(hours=h,minutes=minute))
-        day+=pd.Timedelta(days=1)
-    return out
-def _explicit(df,starts,duration,now):
-    rows=[]
+
+def _ist(frame: pd.DataFrame) -> pd.DataFrame:
+    return normalize_candles(frame)
+
+
+def _ohlc(group: pd.DataFrame) -> dict:
+    group = group.sort_index()
+    return {
+        "open": float(group.open.iloc[0]),
+        "high": float(group.high.max()),
+        "low": float(group.low.min()),
+        "close": float(group.close.iloc[-1]),
+    }
+
+
+def _day_starts(now: pd.Timestamp, hours: tuple[int, ...], minute: int, lookback_days: int = 3):
+    day = now.normalize() - pd.Timedelta(days=lookback_days)
+    end_day = now.normalize()
+    while day <= end_day:
+        for hour in hours:
+            yield day + pd.Timedelta(hours=hour, minutes=minute)
+        day += pd.Timedelta(days=1)
+
+
+def _infer_interval(frame: pd.DataFrame) -> pd.Timedelta:
+    if len(frame.index) < 2:
+        return pd.Timedelta(hours=1)
+    diffs = pd.Series(frame.index).diff().dropna()
+    if diffs.empty:
+        return pd.Timedelta(hours=1)
+    return pd.Timedelta(diffs.mode().iloc[0])
+
+
+def _explicit_bars(
+    frame: pd.DataFrame,
+    starts,
+    duration: pd.Timedelta,
+    *,
+    provider_interval: pd.Timedelta,
+    now: pd.Timestamp,
+) -> pd.DataFrame:
+    rows = []
+    expected_count = int(duration / provider_interval)
     for start in starts:
-        end=start+duration
-        if end>now:continue
-        g = df[(df.index >= start) & (df.index < end)].sort_index()
-        if g.empty:
+        end = start + duration
+        if end > now:
             continue
-        expected_count = 1 if duration == pd.Timedelta(hours=1) else int(duration / pd.Timedelta(hours=1))
-        if expected_count > 1:
+        group = frame[(frame.index >= start) & (frame.index < end)].sort_index()
+        expected = pd.date_range(
+            start=start,
+            periods=expected_count,
+            freq=provider_interval,
+            tz=IST_TIMEZONE,
+        )
+        if len(group) != expected_count or not group.index.equals(expected):
+            continue
+        rows.append({
+            "timestamp": start,
+            **_ohlc(group),
+        })
+    if not rows:
+        return pd.DataFrame(
+            columns=["open", "high", "low", "close"],
+            index=pd.DatetimeIndex([], tz=IST_TIMEZONE),
+        )
+    return pd.DataFrame(rows).set_index("timestamp").sort_index()
+
+
+def build_closed_candles(
+    frame: pd.DataFrame,
+    symbol: str,
+    now: pd.Timestamp | None = None,
+    *,
+    lookback_days: int = 3,
+):
+    """Return only completed, schedule-aligned Sweep candles."""
+    if frame is None or frame.empty:
+        return pd.DataFrame(), "", "No market data"
+
+    symbol = str(symbol).strip().upper()
+    if symbol not in LIVE_ASSET_MAP:
+        raise ValueError(f"Unknown live asset: {symbol}")
+
+    current = pd.Timestamp.now(tz=IST_TIMEZONE) if now is None else pd.Timestamp(now)
+    if current.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    current = current.tz_convert(IST_TIMEZONE)
+    data = _ist(frame)
+
+    if symbol in ("^NSEI", "^NSEBANK"):
+        interval = _infer_interval(data)
+        if interval not in (pd.Timedelta(minutes=1), pd.Timedelta(hours=1)):
+            return pd.DataFrame(), "1H", "Unsupported provider interval"
+        bars = _explicit_bars(
+            data,
+            _day_starts(current, NSE_INDEX_SWEEP_HOURS_IST, SWEEP_MINUTE_NSE, lookback_days),
+            pd.Timedelta(hours=1),
+            provider_interval=interval,
+            now=current,
+        )
+        return bars, "1H", None
+
+    asset = LIVE_ASSET_MAP[symbol]
+    if asset.asset_type == "equity":
+        starts = _day_starts(current, (9, 13), SWEEP_MINUTE_NSE, lookback_days)
+        rows = []
+        for start in starts:
+            duration = pd.Timedelta(hours=4 if start.hour == 9 else 2)
+            end = start + duration
+            if end > current:
+                continue
+            group = data[(data.index >= start) & (data.index < end)].sort_index()
+            interval = _infer_interval(data)
+            if interval not in (pd.Timedelta(minutes=1), pd.Timedelta(hours=1)):
+                continue
+            expected_count = int(duration / interval)
             expected = pd.date_range(
                 start=start,
                 periods=expected_count,
-                freq="1h",
+                freq=interval,
                 tz=IST_TIMEZONE,
             )
-            if len(g) != expected_count or not g.index.equals(expected):
+            if len(group) != expected_count or not group.index.equals(expected):
                 continue
-        rows.append({"timestamp": start, **_ohlc(g)})
-    if not rows:return pd.DataFrame(columns=["open","high","low","close"],index=pd.DatetimeIndex([],tz=IST_TIMEZONE))
-    return pd.DataFrame(rows).set_index("timestamp").sort_index()
-def build_closed_candles(df,symbol,now=None):
-    if df is None or df.empty:return pd.DataFrame(),"","No market data"
+            rows.append({"timestamp": start, **_ohlc(group)})
+        if not rows:
+            return pd.DataFrame(), "4H", "No complete NSE session bars"
+        return pd.DataFrame(rows).set_index("timestamp").sort_index(), "4H", None
+
+    hours = BTC_SWEEP_HOURS_IST if symbol == "BTC-USD" else GOLD_SWEEP_HOURS_IST
+    interval = _infer_interval(data)
+    if interval not in (pd.Timedelta(minutes=30), pd.Timedelta(hours=1)):
+        return pd.DataFrame(), "4H", "Unsupported provider interval"
+    bars = _explicit_bars(
+        data,
+        _day_starts(current, hours, SWEEP_MINUTE_GLOBAL, lookback_days),
+        pd.Timedelta(hours=4),
+        provider_interval=interval,
+        now=current,
+    )
+    return bars, "4H", None
+
+
+def detect_sweep(
+    frame: pd.DataFrame,
+    symbol: str,
+    now: pd.Timestamp | None = None,
+) -> SweepResult | None:
+    bars, timeframe, warning = build_closed_candles(frame, symbol, now)
+    if len(bars) < 2:
+        return None
+
     symbol = str(symbol).strip().upper()
-    asset = LIVE_ASSET_MAP.get(symbol)
-    is_equity = bool(asset and asset.asset_type == "equity") or symbol.endswith(".NS")
-    now=pd.Timestamp(now or datetime.now().astimezone());now=now.tz_localize(IST_TIMEZONE) if now.tzinfo is None else now.tz_convert(IST_TIMEZONE);x=_ist(df)
-    if symbol in ("^NSEI","^NSEBANK"):return _explicit(x,_starts(now,(9,10,11,12,13,14),15),pd.Timedelta(hours=1),now),"1H",None
-    if is_equity:
-        rows=[]
-        for day,g in x.groupby(x.index.date):
-            base=pd.Timestamp(day).tz_localize(IST_TIMEZONE);a=g[(g.index>=base+pd.Timedelta(hours=9,minutes=15))&(g.index<base+pd.Timedelta(hours=13,minutes=15))];b=g[(g.index>=base+pd.Timedelta(hours=13,minutes=15))&(g.index<base+pd.Timedelta(hours=15,minutes=15))]
-            if not a.empty:rows.append((base+pd.Timedelta(hours=9,minutes=15),_ohlc(a),base+pd.Timedelta(hours=13,minutes=15)))
-            if not b.empty and b.index.max()>=base+pd.Timedelta(hours=14,minutes=15):rows.append((base+pd.Timedelta(hours=13,minutes=15),_ohlc(b),base+pd.Timedelta(hours=15,minutes=15)))
-        if not rows:return pd.DataFrame(),"4H","No complete NSE session bars"
-        out=pd.DataFrame([{**v,"timestamp":s} for s,v,_ in rows]).set_index("timestamp");ends=pd.Series([e for _,_,e in rows],index=out.index);return out[ends<=now],"4H",None
-    if symbol=="BTC-USD":return _explicit(x,_starts(now,(1,5,9,13,17,21),30),pd.Timedelta(hours=4),now),"4H",None
-    return _explicit(x,_starts(now,(2,6,10,14,18,22),30),pd.Timedelta(hours=4),now),"4H",None
-def detect_sweep(df,symbol,now=None):
-    bars,tf,warning=build_closed_candles(df,symbol,now)
-    if len(bars)<2:return None
-    asset = LIVE_ASSET_MAP.get(str(symbol).strip().upper())
-    is_equity = bool(asset and asset.asset_type == "equity") or str(symbol).strip().upper().endswith(".NS")
-    prev,cur=bars.iloc[-2],bars.iloc[-1];start=pd.Timestamp(bars.index[-1]);end=start+(pd.Timedelta(hours=2) if is_equity and start.hour==13 else pd.Timedelta(hours=1) if tf=='1H' else pd.Timedelta(hours=4));hs=float(cur.high)>float(prev.high);ls=float(cur.low)<float(prev.low)
-    if not(hs and ls):return None
-    close=float(cur.close);direction="BULLISH" if close>float(prev.high) else "BEARISH" if close<float(prev.low) else "NEUTRAL";expected_minute=15 if is_equity or symbol in ('^NSEI','^NSEBANK') else 30;expected={9,13} if is_equity else {9,10,11,12,13,14} if symbol in ('^NSEI','^NSEBANK') else {1,5,9,13,17,21} if symbol=='BTC-USD' else {2,6,10,14,18,22}
-    if start.hour not in expected or start.minute!=expected_minute:warning=f"Candle start {start.strftime('%H:%M IST')} is outside configured schedule"
-    return SweepResult(direction,tf,start,end,{k:float(prev[k]) for k in ('open','high','low','close')},{k:float(cur[k]) for k in ('open','high','low','close')},hs,ls,warning)
+    asset = LIVE_ASSET_MAP[symbol]
+    previous = bars.iloc[-2]
+    current = bars.iloc[-1]
+    start = pd.Timestamp(bars.index[-1])
+
+    if asset.asset_type == "equity":
+        duration = pd.Timedelta(hours=4 if start.hour == 9 else 2)
+    else:
+        duration = pd.Timedelta(hours=1 if timeframe == "1H" else 4)
+
+    end = start + duration
+    high_swept = float(current.high) > float(previous.high)
+    low_swept = float(current.low) < float(previous.low)
+
+    if not (high_swept and low_swept):
+        return None
+
+    close = float(current.close)
+    if close > float(previous.high):
+        direction = "BULLISH"
+    elif close < float(previous.low):
+        direction = "BEARISH"
+    else:
+        direction = "NEUTRAL"
+
+    expected_minute = (
+        SWEEP_MINUTE_NSE
+        if asset.market == "NSE"
+        else SWEEP_MINUTE_GLOBAL
+    )
+    expected_hours = (
+        set((9, 13))
+        if asset.asset_type == "equity"
+        else set(NSE_INDEX_SWEEP_HOURS_IST)
+        if symbol in ("^NSEI", "^NSEBANK")
+        else set(BTC_SWEEP_HOURS_IST if symbol == "BTC-USD" else GOLD_SWEEP_HOURS_IST)
+    )
+    schedule_warning = warning
+    if start.hour not in expected_hours or start.minute != expected_minute:
+        schedule_warning = (
+            f"Candle start {start:%H:%M IST} is outside configured schedule"
+        )
+
+    return SweepResult(
+        direction=direction,
+        timeframe=timeframe,
+        candle_start=start,
+        candle_end=end,
+        previous={k: float(previous[k]) for k in ("open", "high", "low", "close")},
+        current={k: float(current[k]) for k in ("open", "high", "low", "close")},
+        high_swept=high_swept,
+        low_swept=low_swept,
+        schedule_warning=schedule_warning,
+    )
+
+
+__all__ = ["SweepResult", "build_closed_candles", "detect_sweep"]

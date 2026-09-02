@@ -66,6 +66,7 @@ def sweep_backtest(candles: pd.DataFrame, *, symbol: str | None = None, account:
             frame,
             symbol.strip().upper(),
             now=frame.index[-1] + pd.Timedelta(days=2),
+            lookback_days=max(3, (frame.index[-1].date() - frame.index[0].date()).days + 2),
         )[0]
         frame = canonical
 

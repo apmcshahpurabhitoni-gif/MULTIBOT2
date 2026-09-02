@@ -15,6 +15,8 @@ from config import (
 from market_data import (
     MarketDataError,
     build_nse_hourly_candles,
+    build_nse_hourly_from_provider_hourly,
+    build_global_hourly_candles,
 )
 from signal_gate import SignalGate
 from strategies import (
@@ -75,33 +77,50 @@ class TrendPulseRuntime:
         *,
         period: str,
     ) -> pd.DataFrame:
-        minute = self.provider.fetch(
+        # Yahoo limits 1m history. Use it for the live short window so the
+        # canonical session candle is built from actual minutes; for longer
+        # historical periods, use Yahoo native 1H bars and canonicalize their
+        # session boundaries.
+        short_period = period in {"1d", "2d", "5d", "7d"}
+        if short_period:
+            minute = self.provider.fetch(
+                asset.yahoo_symbol,
+                period=period,
+                interval="1m",
+                validate_hourly=False,
+            )
+            result = build_nse_hourly_candles(minute)
+            if len(result) >= 60:
+                return result
+        hourly = self.provider.fetch(
             asset.yahoo_symbol,
             period=period,
-            interval="1m",
+            interval="1h",
             validate_hourly=False,
         )
-
-        return build_nse_hourly_candles(minute)
+        return build_nse_hourly_from_provider_hourly(hourly)
 
     def _fetch_global_hourly(
         self,
         asset: AssetConfig,
         *,
         period: str,
+        as_of: pd.Timestamp,
     ) -> pd.DataFrame:
-        return self.provider.fetch(
+        raw = self.provider.fetch(
             asset.yahoo_symbol,
             period=period,
-            interval="1h",
+            interval="30m",
             validate_hourly=False,
         )
+        return build_global_hourly_candles(raw, anchor_minute=30, as_of=as_of)
 
     def fetch_symbol_1h(
         self,
         symbol: str,
         *,
         period: str = "30d",
+        as_of: pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         normalized = symbol.strip().upper()
 
@@ -111,6 +130,7 @@ class TrendPulseRuntime:
             )
 
         asset = LIVE_ASSET_MAP[normalized]
+        current = self._current(as_of)
 
         if self._is_nse(asset):
             return self._fetch_nse_hourly(
@@ -121,6 +141,26 @@ class TrendPulseRuntime:
         return self._fetch_global_hourly(
             asset,
             period=period,
+            as_of=current,
+        )
+
+    def fetch_sweep_frame(
+        self,
+        symbol: str,
+        *,
+        period: str = "30d",
+    ) -> pd.DataFrame:
+        """Fetch raw provider data required by the canonical Sweep schedule."""
+        normalized = symbol.strip().upper()
+        asset = LIVE_ASSET_MAP.get(normalized)
+        if asset is None:
+            raise MarketDataError(f"Unknown live asset: {normalized}")
+        interval = "1m" if asset.market == "NSE" else "30m"
+        return self.provider.fetch(
+            asset.yahoo_symbol,
+            period=period,
+            interval=interval,
+            validate_hourly=False,
         )
 
     @staticmethod
@@ -150,15 +190,10 @@ class TrendPulseRuntime:
             normalized,
             period=period,
         )
+        if not one.empty:
+            one = one.loc[one.index <= current].copy()
 
         asset = LIVE_ASSET_MAP[normalized]
-        # Yahoo global 1H candles are interval-start stamped. Never evaluate
-        # the currently forming bar; NSE canonical candles are close-stamped
-        # by build_nse_hourly_candles and are already complete.
-        if asset.market != "NSE" and not one.empty:
-            complete_mask = one.index + pd.Timedelta(hours=1) <= current
-            one = one.loc[complete_mask].copy()
-
         four = self._build_4h(one)
 
         signal = trendpulse_from_frames(

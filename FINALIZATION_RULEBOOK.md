@@ -8,6 +8,12 @@ This is the mandatory release contract. A green test suite alone never means fin
 - Conflicts must be traced to source; never guessed.
 
 ## Locked rules
+- Live universe: exactly 19 assets — 15 NSE stocks + NIFTY 50 + BANK NIFTY + Gold + Bitcoin.
+- NSE stocks use `.NS` Yahoo symbols; indexes/Gold/Bitcoin use their configured native Yahoo symbols.
+- TrendPulse: 1H signal with confirmed 4H filter across all 19 assets.
+- Sweep V2: NIFTY/BANK NIFTY 1H; NSE stocks/Gold/Bitcoin 4H.
+- Bitcoin Sweep starts: 01:30, 05:30, 09:30, 13:30, 17:30, 21:30 IST.
+- Gold Sweep starts: 02:30, 06:30, 10:30, 14:30, 18:30, 22:30 IST.
 - Paper trading only.
 - Account limits: `macro=20`, `nifty=5`, `ny_session=3`, `sweep_4h=3`.
 - TrendPulse risk: INR 2,000 per trade.

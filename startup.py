@@ -15,7 +15,7 @@ from config import APP_VERSION as CONFIG_APP_VERSION
 APP_NAME = "MULTIBOT2"
 APP_VERSION = os.getenv("MULTIBOT2_VERSION", CONFIG_APP_VERSION)
 BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
-DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://multibot2-t74l.onrender.com/dashboard")
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://lead-generator-zzty.onrender.com/dashboard")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,17 +52,13 @@ def startup_message() -> str:
 def whats_new_message() -> str:
     return (
         f"🆕 WHAT'S NEW — v{APP_VERSION}\n{BR}\n"
-        "➕ ADDED / IMPROVED\n"
-        "🌐 Dashboard link opens the actual /dashboard page\n"
-        "⚡ One tap from Telegram opens the live dashboard\n"
-        "🎨 Premium dashboard visual hierarchy and responsive presentation\n\n"
-        "🛠️ FIXED / PRESERVED\n"
-        "🔗 Fixed the missing /dashboard server route that caused Not Found\n"
-        "📐 Stronger dashboard cards, spacing, navigation and visual depth\n"
-        "📱 Improved mobile dashboard presentation\n"
-        "🌙 Dark and Neo-Brutalist themes preserved\n"
-        "🚫 No trading strategy, execution, risk, persistence or Telegram signal behavior changed\n"
-        "🚫 No FVG logic added\n" + BR
+        "🌐 19-asset live universe: 15 NSE stocks + NIFTY + BANK NIFTY + Gold + BTC\n"
+        "📈 TrendPulse: completed 1H signal + confirmed 4H filter\n"
+        "🔎 Sweep V2: strict two-sided sweep + final-close classification\n"
+        "🕯️ Canonical NSE 1H closes: 10:15, 11:15, 12:15, 13:15, 14:15, 15:15\n"
+        "⏳ Freshness: exactly 1 hour; duplicate sends survive restart\n"
+        "💾 Supabase authoritative with SQLite fallback\n"
+        "🎨 Dashboard remains presentation-only and expandable\n" + BR
     )
 
 

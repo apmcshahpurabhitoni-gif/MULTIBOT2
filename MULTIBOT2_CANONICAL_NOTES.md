@@ -47,11 +47,15 @@ Tests cover accounts, backtest, candles, configuration, dashboard UI, DB, main r
 - Risk: INR 2,000 per trade.
 - Leverage: 1x.
 - Timezone: `Asia/Kolkata`.
-- Timeframe: `1h`.
+- Primary TrendPulse timeframe: `1h`.
 - Market-data provider: Yahoo Finance.
 - Fixed 19-asset live universe:
-  `RELIANCE`, `BHARTIARTL`, `HDFCBANK`, `ICICIBANK`, `SBIN`, `TCS`, `BAJFINANCE`, `LT`, `LICI`, `SUNPHARMA`, `HINDUNILVR`, `INFY`, `TITAN`, `MARUTI`, `KOTAKBANK`.
-  Plus `^NSEI`, `^NSEBANK`, `GC=F`, and `BTC-USD`.
+  - NSE stocks: `RELIANCE`, `BHARTIARTL`, `HDFCBANK`, `ICICIBANK`, `SBIN`, `TCS`, `BAJFINANCE`, `LT`, `LICI`, `SUNPHARMA`, `HINDUNILVR`, `INFY`, `TITAN`, `MARUTI`, `KOTAKBANK`
+  - NIFTY 50: `^NSEI`
+  - BANK NIFTY: `^NSEBANK`
+  - Gold: `GC=F`
+  - Bitcoin: `BTC-USD`
+- Yahoo symbols are never inferred by appending `.NS`; the asset configuration is authoritative.
 
 ## 4. Candle contract
 
@@ -112,6 +116,15 @@ Tests cover accounts, backtest, candles, configuration, dashboard UI, DB, main r
 - State transitions must be idempotent.
 - No pending-sweep state may be introduced.
 
+## 8A. Sweep schedules and data boundaries
+
+- NIFTY 50 and BANK NIFTY Sweep: 1H candles starting at `09:15, 10:15, 11:15, 12:15, 13:15, 14:15` IST.
+- NSE stocks Sweep: 4H session candle starting `09:15` plus the final `13:15–15:15` session bar; the final bar remains classified under the locked 4H Sweep contract and is never extended beyond the NSE close.
+- Bitcoin Sweep: 4H candles starting `01:30, 05:30, 09:30, 13:30, 17:30, 21:30` IST.
+- Gold Sweep: 4H candles starting `02:30, 06:30, 10:30, 14:30, 18:30, 22:30` IST.
+- All Sweep candles require complete provider observations for the configured interval.
+- Sweep scheduling is data-driven: a 5-minute runtime poll may discover a newly completed scheduled candle, but it does not create off-schedule candles.
+
 ## 9. Telegram contract
 
 - BUY uses green direction icon; SELL uses red.
@@ -139,7 +152,7 @@ Render starts the service with `pip install -e .` and `python main.py`. Runtime 
 The current runtime dashboard payload contains:
 - `system`: status, mode, timezone, timeframe, leverage
 - `rules`: account size, risk per trade, independent account limits, freshness
-- `universe`: fixed 19-asset live list
+- `universe`: fixed 19-asset live list plus asset metadata
 - `accounts`: account balances, planned risk, limits and remaining capacity
 - `signals`: strategy, symbol, direction, timestamp and reason
 - `trades`: active and historical trade rows
