@@ -73,8 +73,6 @@ class TrendPulseService:
             try:
                 send_message(message, self._config())
             except Exception:
-                # A Telegram notification failure must never turn a strategy
-                # rejection into a false trade or a different business result.
                 pass
         return TrendPulseDispatchResult(
             symbol,
@@ -94,7 +92,6 @@ class TrendPulseService:
 
         if signal.signal not in ("BUY", "SELL"):
             return self._reject(scan.symbol, signal, "NO_DIRECTIONAL_SIGNAL", send=send, account_name=account_name)
-
         if not scan.fresh or self.runtime.gate.age_hours(signal, now=current) > SIGNAL_FRESHNESS_HOURS:
             return self._reject(scan.symbol, signal, "STALE_SIGNAL", send=send, account_name=account_name)
 
@@ -115,7 +112,6 @@ class TrendPulseService:
             trade = PaperTrade(plan=plan, account=account_name, quantity=qty)
             age_m = int(self.runtime.gate.age_hours(signal, now=current) * 60)
             age = f"{age_m} min ago" if age_m < 60 else f"{age_m // 60} hr {age_m % 60} min ago"
-            # LOCKED RULE: all user-facing signal messages use the canonical 1H timeframe.
             message = render_signal_message(
                 signal,
                 symbol=f"{scan.symbol}.NS",
