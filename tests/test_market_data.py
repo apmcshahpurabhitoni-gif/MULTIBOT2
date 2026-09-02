@@ -6,6 +6,8 @@ from market_data import (
     build_nse_hourly_candles,
     candles_from_records,
     candle_age_hours,
+    build_global_hourly_candles,
+    build_nse_hourly_from_provider_hourly,
     normalize_candles,
     validate_symbol,
     yahoo_symbol,
@@ -224,7 +226,13 @@ def test_yahoo_symbol_uses_nse_suffix():
 
 def test_symbol_outside_fixed_universe_is_rejected():
     with pytest.raises(MarketDataError):
-        yahoo_symbol("BTC-USD")
+        yahoo_symbol("AAPL")
+
+
+def test_global_live_symbols_use_their_canonical_yahoo_ticker():
+    assert yahoo_symbol("BTC-USD") == "BTC-USD"
+    assert yahoo_symbol("GC=F") == "GC=F"
+    assert yahoo_symbol("^NSEI") == "^NSEI"
 
 
 def test_first_hour_is_0915_to_1014():
@@ -360,3 +368,31 @@ def test_future_candle_is_rejected():
             timestamp,
             now,
         )
+
+
+def test_global_30m_bars_build_close_stamped_1h():
+    idx = pd.date_range("2026-09-01 09:30", periods=4, freq="30min", tz="Asia/Kolkata")
+    close = pd.Series([100, 101, 102, 103], index=idx, dtype=float)
+    raw = pd.DataFrame({"open":close-.5,"high":close+1,"low":close-1,"close":close}, index=idx)
+    out = build_global_hourly_candles(raw, as_of=pd.Timestamp("2026-09-01 11:00+05:30"))
+    assert list(out.index) == [
+        pd.Timestamp("2026-09-01 10:30+05:30"),
+        pd.Timestamp("2026-09-01 11:30+05:30"),
+    ][0:1]
+    assert out.iloc[0].close == 101.0
+
+
+def test_global_incomplete_30m_hour_is_dropped():
+    idx = pd.date_range("2026-09-01 09:30", periods=3, freq="30min", tz="Asia/Kolkata")
+    close = pd.Series([100,101,102], index=idx, dtype=float)
+    raw = pd.DataFrame({"open":close-.5,"high":close+1,"low":close-1,"close":close}, index=idx)
+    out = build_global_hourly_candles(raw, as_of=pd.Timestamp("2026-09-01 11:30+05:30"))
+    assert len(out) == 1
+
+
+def test_nse_provider_hourly_is_converted_to_canonical_close_times():
+    idx = pd.date_range("2026-09-01 09:15", periods=6, freq="1h", tz="Asia/Kolkata")
+    close = pd.Series(range(100,106), index=idx, dtype=float)
+    raw = pd.DataFrame({"open":close-.5,"high":close+1,"low":close-1,"close":close}, index=idx)
+    out = build_nse_hourly_from_provider_hourly(raw)
+    assert list(out.index) == list(pd.date_range("2026-09-01 10:15", periods=6, freq="1h", tz="Asia/Kolkata"))
