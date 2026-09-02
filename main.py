@@ -216,7 +216,6 @@ def _backtest_payload(strategy: str, symbol: str, period: str) -> dict:
         raise ValueError("symbol must be a supported backtest asset")
     if period not in {"5d", "30d", "60d", "90d", "1y"}:
         raise ValueError("period must be one of 5d, 30d, 60d, 90d or 1y")
-
     is_nse = asset["asset_type"] == "equity"
     frame = RUNTIME.provider.fetch(asset["ticker"], period=period, interval="1h", validate_hourly=is_nse)
     result = trendpulse_backtest(frame, account="nifty") if strategy_key == "trendpulse" else sweep_backtest(frame, account="sweep_4h")
@@ -238,23 +237,13 @@ def _backtest_payload(strategy: str, symbol: str, period: str) -> dict:
 
 
 def snapshot() -> dict:
-    ensure_runtime()
+    # Dashboard state must remain available even if a market-data provider is unavailable.
+    # Scanner/backtest paths still call ensure_runtime() and validate the live runtime normally.
+    if not ACCOUNTS:
+        init_state()
     with LOCK:
         account_rows = [{"name": a.name, "starting_balance": a.starting_balance, "balance": a.balance, "planned_risk_used": a.planned_risk_used, "daily_trade_limit": a.daily_trade_limit, "max_daily_planned_risk": a.max_daily_planned_risk, "trades_today": a.trades_today, "remaining_trades": a.remaining_trades, "remaining_planned_risk": a.remaining_planned_risk} for a in ACCOUNTS.values()]
-        return {
-            "version": APP_VERSION,
-            "whats_new": list(WHAT_IS_NEW),
-            "system": {"status": "ONLINE", "mode": "PAPER", "timezone": IST_TIMEZONE, "timeframe": "1h", "leverage": 1},
-            "rules": {"account_size_inr": ACCOUNT_SIZE_INR, "risk_per_trade_inr": RISK_PER_TRADE_INR, "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS), "signal_freshness_hours": 1},
-            "universe": {"count": 15, "symbols": list(NSE_15_SYMBOLS), "fixed": True},
-            "backtest_assets": [{"key": key, **asset} for key, asset in BACKTEST_ASSETS.items()],
-            "accounts": {"count": 4, "names": list(ACCOUNT_NAMES), "data": account_rows},
-            "signals": list(SIGNALS[:500]),
-            "trades": ACTIVE + HISTORY[:200],
-            "counts": {"signals": len(SIGNALS), "trades": len(ACTIVE) + len(HISTORY), "open_trades": len(ACTIVE), "closed_trades": len(HISTORY)},
-            "scan": dict(LAST_SCAN),
-            "generated_at": now().isoformat(),
-        }
+        return {"version": APP_VERSION, "whats_new": list(WHAT_IS_NEW), "system": {"status": "ONLINE", "mode": "PAPER", "timezone": IST_TIMEZONE, "timeframe": "1h", "leverage": 1}, "rules": {"account_size_inr": ACCOUNT_SIZE_INR, "risk_per_trade_inr": RISK_PER_TRADE_INR, "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS), "signal_freshness_hours": 1}, "universe": {"count": 15, "symbols": list(NSE_15_SYMBOLS), "fixed": True}, "backtest_assets": [{"key": key, **asset} for key, asset in BACKTEST_ASSETS.items()], "accounts": {"count": 4, "names": list(ACCOUNT_NAMES), "data": account_rows}, "signals": list(SIGNALS[:500]), "trades": ACTIVE + HISTORY[:200], "counts": {"signals": len(SIGNALS), "trades": len(ACTIVE) + len(HISTORY), "open_trades": len(ACTIVE), "closed_trades": len(HISTORY)}, "scan": dict(LAST_SCAN), "generated_at": now().isoformat()}
 
 
 def _json_response(start, payload, status="200 OK"):
@@ -275,7 +264,6 @@ def _calendar_payload(query: dict) -> dict:
 def web_server() -> None:
     root = os.path.dirname(__file__)
     files = {"/": ("dashboard.html", "text/html; charset=utf-8"), "/dashboard": ("dashboard.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "application/javascript"), "/styles.css": ("styles.css", "text/css")}
-
     def app(env, start):
         path = env.get("PATH_INFO", "/")
         query = parse.parse_qs(env.get("QUERY_STRING", ""))
@@ -312,7 +300,6 @@ def web_server() -> None:
             return [body]
         start("404 Not Found", [("Content-Type", "text/plain")])
         return [b"Not found"]
-
     make_server("0.0.0.0", int(os.getenv("PORT", "10000")), app).serve_forever()
 
 
