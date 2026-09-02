@@ -1,10 +1,9 @@
 """Yahoo Finance market-data adapter for MULTIBOT2.
 
-Yahoo is used as the market-data source, following the caching and 429
-backoff approach from the original multi-strategy-telegram-bot repository.
-Credentials are not required.
+Yahoo Finance is the locked market-data source. The adapter deliberately lets
+current yfinance manage its native HTTP client; passing a plain requests.Session
+to modern yfinance causes the curl_cffi session error seen in the dashboard.
 """
-
 from __future__ import annotations
 
 import time
@@ -12,20 +11,12 @@ from threading import RLock
 from typing import Optional
 
 import pandas as pd
-import requests
 import yfinance as yf
 
 from candles import validate_hourly_observations
 from config import IST_TIMEZONE
 
-
-YF_TTL_BY_INTERVAL = {
-    "1m": 45.0,
-    "1h": 300.0,
-    "4h": 300.0,
-    "1d": 600.0,
-}
-YF_SYMBOL_TTL = 45.0
+YF_TTL_BY_INTERVAL = {"1m": 45.0, "1h": 300.0, "4h": 300.0, "1d": 600.0}
 YAHOO_BACKOFF_SECONDS = 600.0
 
 
@@ -34,28 +25,21 @@ class YahooDataError(RuntimeError):
 
 
 class YahooProvider:
-    """Rate-conscious Yahoo Finance provider with per-symbol caching."""
+    """Rate-conscious Yahoo Finance provider with period-aware caching."""
 
-    def __init__(self, *, session: Optional[requests.Session] = None) -> None:
-        self._session = session or requests.Session()
-        self._session.headers.update(
-            {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                )
-            }
-        )
-        self._cache: dict[tuple[str, str], tuple[pd.DataFrame, float]] = {}
+    def __init__(self, *, session: Optional[object] = None) -> None:
+        # Kept only for source compatibility. Modern yfinance owns its curl_cffi
+        # session internally, so an external requests.Session is never passed in.
+        self._external_session = session
+        self._cache: dict[tuple[str, str, str, bool], tuple[pd.DataFrame, float]] = {}
         self._backoff_until = 0.0
         self._lock = RLock()
 
     def _ttl(self, interval: str) -> float:
-        return YF_TTL_BY_INTERVAL.get(interval, YF_SYMBOL_TTL)
+        return YF_TTL_BY_INTERVAL.get(interval, 60.0)
 
-    def _cached(self, symbol: str, interval: str) -> Optional[pd.DataFrame]:
-        key = (symbol, interval)
+    def _cached(self, symbol: str, period: str, interval: str, validate_hourly: bool) -> Optional[pd.DataFrame]:
+        key = (symbol, period, interval, validate_hourly)
         with self._lock:
             item = self._cache.get(key)
             if item is None:
@@ -66,9 +50,9 @@ class YahooProvider:
             self._cache.pop(key, None)
             return None
 
-    def _store(self, symbol: str, interval: str, frame: pd.DataFrame) -> pd.DataFrame:
+    def _store(self, key: tuple[str, str, str, bool], frame: pd.DataFrame) -> pd.DataFrame:
         with self._lock:
-            self._cache[(symbol, interval)] = (frame.copy(), time.monotonic())
+            self._cache[key] = (frame.copy(), time.monotonic())
         return frame.copy()
 
     def fetch(
@@ -79,14 +63,13 @@ class YahooProvider:
         interval: str = "1h",
         validate_hourly: bool = True,
     ) -> pd.DataFrame:
-        """Fetch Yahoo candles while respecting cache and rate-limit backoff."""
-        cached = self._cached(symbol, interval)
+        """Fetch Yahoo candles without the incompatible requests.Session argument."""
+        cached = self._cached(symbol, period, interval, validate_hourly)
         if cached is not None:
             return cached
 
-        now = time.monotonic()
         with self._lock:
-            if now < self._backoff_until:
+            if time.monotonic() < self._backoff_until:
                 raise YahooDataError("Yahoo Finance is in rate-limit backoff")
 
         try:
@@ -97,10 +80,10 @@ class YahooProvider:
                 progress=False,
                 auto_adjust=True,
                 threads=False,
-                session=self._session,
             )
         except Exception as exc:
-            if "429" in str(exc) or "too many requests" in str(exc).lower():
+            message = str(exc)
+            if "429" in message or "too many requests" in message.lower() or "rate" in message.lower():
                 with self._lock:
                     self._backoff_until = time.monotonic() + YAHOO_BACKOFF_SECONDS
             raise YahooDataError(f"Yahoo request failed for {symbol}: {exc}") from exc
@@ -113,26 +96,21 @@ class YahooProvider:
 
         required = {"Open", "High", "Low", "Close"}
         if not required.issubset(frame.columns):
-            raise YahooDataError(
-                f"Yahoo response for {symbol} is missing OHLC columns"
-            )
+            raise YahooDataError(f"Yahoo response for {symbol} is missing OHLC columns")
 
         frame = frame[["Open", "High", "Low", "Close"]].copy()
         frame.columns = [column.lower() for column in frame.columns]
-
         if not isinstance(frame.index, pd.DatetimeIndex):
             raise YahooDataError("Yahoo response has no DatetimeIndex")
-
         if frame.index.tz is None:
             frame.index = frame.index.tz_localize("UTC")
-
         frame.index = frame.index.tz_convert(IST_TIMEZONE)
         frame = frame.sort_index()
 
         if interval == "1h" and validate_hourly:
             validate_hourly_observations(frame)
 
-        return self._store(symbol, interval, frame)
+        return self._store((symbol, period, interval, validate_hourly), frame)
 
     def clear_cache(self) -> None:
         with self._lock:
@@ -153,9 +131,4 @@ def fetch_yahoo(
     interval: str = "1h",
     validate_hourly: bool = True,
 ) -> pd.DataFrame:
-    return _default_provider.fetch(
-        symbol,
-        period=period,
-        interval=interval,
-        validate_hourly=validate_hourly,
-    )
+    return _default_provider.fetch(symbol, period=period, interval=interval, validate_hourly=validate_hourly)
