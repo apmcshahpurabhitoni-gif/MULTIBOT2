@@ -11,8 +11,9 @@ import os
 from urllib import parse, request
 
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.5")
+APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.6")
 BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
+DASHBOARD_URL = "https://multibot2-t74l.onrender.com"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,26 +42,23 @@ def startup_message() -> str:
         f"🤖 {APP_NAME} STARTED\n{BR}\n"
         f"🟢 Status: ONLINE\n🏷 Version: {APP_VERSION}\n🔖 Build: {BUILD}\n"
         "🧪 Mode: PAPER\n🇮🇳 Market: NSE-15\n⏱ Timeframe: 1H\n"
-        "⏳ Signal freshness: 1h\n💾 Persistence: Supabase\n" + BR
+        "⏳ Signal freshness: 1h\n💾 Persistence: Supabase\n\n"
+        f"🌐 DASHBOARD\n👉 {DASHBOARD_URL}\n" + BR
     )
 
 
 def whats_new_message() -> str:
     return (
         f"🆕 WHAT'S NEW — v{APP_VERSION}\n{BR}\n"
-        "🛠️ FIXED\n"
-        "🎨 Dashboard no longer looks like a stripped-down copy of the approved UI\n"
-        "📐 Restored stronger card hierarchy, spacing, navigation, status pills and visual depth\n"
-        "📱 Improved mobile-first layout and fixed bottom navigation presentation\n"
-        "🌙 Preserved genuinely dark mode and Neo-Brutalist theme behavior\n"
-        "♿ Preserved reduced-motion support and horizontal-overflow protection\n"
-        "🚫 No trading strategy, execution, risk, persistence or Telegram behavior changed\n\n"
         "➕ ADDED / IMPROVED\n"
-        "✨ Premium visual hierarchy for overview, signals, trades, news and tools\n"
-        "🎯 Clearer accent states for BUY/SELL, freshness, risk and news impact\n"
-        "🧭 Cleaner navigation and responsive spacing across desktop and mobile\n"
-        "📊 More polished metric, chart, form and table presentation\n"
-        "🧩 Kept the existing /api/dashboard presentation contract intact\n"
+        "🌐 Dashboard link is now included directly in every startup message\n"
+        "⚡ One tap from Telegram to open the live dashboard\n"
+        "🎨 Premium dashboard visual hierarchy and responsive presentation\n\n"
+        "🛠️ FIXED / PRESERVED\n"
+        "📐 Stronger dashboard cards, spacing, navigation and visual depth\n"
+        "📱 Improved mobile dashboard presentation\n"
+        "🌙 Dark and Neo-Brutalist themes preserved\n"
+        "🚫 No trading strategy, execution, risk, persistence or Telegram signal behavior changed\n"
         "🚫 No FVG logic added\n" + BR
     )
 
