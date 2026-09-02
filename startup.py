@@ -1,9 +1,7 @@
 """MULTIBOT2 startup announcement.
 
-This is a complete, standalone startup notifier. Render runs it immediately
-before main.py so every process start announces exactly what build is running.
-It only uses Telegram sendMessage; it does not start polling and therefore
-cannot create a Telegram getUpdates conflict.
+Render runs this immediately before main.py so every process start announces
+exactly which version/build is running and what changed in that release.
 """
 from __future__ import annotations
 
@@ -13,8 +11,8 @@ import os
 from urllib import parse, request
 
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.0")
-BUILD = os.getenv("RENDER_GIT_COMMIT", "0904beff")[:8]
+APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.1")
+BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger("multibot2.startup")
@@ -53,17 +51,20 @@ def startup_message() -> str:
 
 def whats_new_message() -> str:
     return (
-        "🆕 *WHAT'S NEW IN THIS BUILD*\n"
+        "🆕 *WHAT'S NEW — v1.0.1*\n"
         f"{BR}\n"
-        "📨 Complete Telegram command/message system\n"
-        "📊 Original operational commands restored\n"
-        "🟢🔴 Approved signal message templates\n"
-        "🔔 Persistent one-hour signal reminders\n"
-        "🎉💀 Trade WIN/LOSS close messages\n"
-        "💾 Supabase persistence for bot state/history\n"
-        "⛔ No `pending_sweeps` workflow\n"
-        "🔒 Locked NSE-15 · 1H · 1h freshness rules\n"
-        "🛡️ Paper-trading runtime remains enabled\n"
+        "🛠️ *FIXED*\n"
+        "🚫 TrendPulse NO_SIGNAL / NEUTRAL no longer sends `SIGNAL NOT SENT`\n"
+        "🚫 Prevented the normal 15-symbol scan from generating 15 rejection messages\n"
+        "🟡 Sweep neutral results are informational and no longer treated as trade rejections\n"
+        "\n"
+        "➕ *ADDED / IMPROVED*\n"
+        "🔎 Scheduled Sweep checking messages\n"
+        "⏱️ Canonical Sweep schedules for Crypto, Forex/Gold, NIFTY/BANKNIFTY and NSE\n"
+        "🕯️ Original Sweep candle timing/close validation retained\n"
+        "🚫 No FVG logic added\n"
+        "🧭 Version/build identification on every bot restart\n"
+        "📋 What's New now records fixes and additions per release\n"
         f"{BR}"
     )
 
@@ -81,7 +82,6 @@ def main() -> int:
         logger.info("Startup announcements sent: version=%s build=%s", APP_VERSION, BUILD)
     except Exception as exc:
         logger.warning("Startup Telegram announcement failed: %s", exc)
-        # Never prevent MULTIBOT2 itself from starting because an announcement failed.
     return 0
 
 
