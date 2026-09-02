@@ -69,7 +69,6 @@ class SweepService:
             try:
                 send_message(message, self._config())
             except Exception:
-                # A notification failure must not change the strategy decision.
                 pass
         return SweepDispatchResult(symbol, signal, None, message if send else None, False, reason, account_name)
 
@@ -125,7 +124,7 @@ class SweepService:
             trade = PaperTrade(plan=plan, account=account_name, quantity=qty)
             age_m = int(self.gate.age_hours(signal, now=current) * 60)
             age = f"{age_m} min ago" if age_m < 60 else f"{age_m // 60} hr {age_m % 60} min ago"
-            # LOCKED RULE: Telegram signal timeframe is always 1H.
+            # LOCKED RULE: all Telegram signal messages use the canonical 1H timeframe.
             message = render_signal_message(
                 signal,
                 symbol=f"{symbol}.NS",
@@ -174,17 +173,20 @@ class SweepService:
         for symbol in NSE_15_SYMBOLS:
             try:
                 signal, frame = self.scan_symbol(symbol, period=period)
-                # A neutral scan is a real strategy outcome and is now reported by Telegram.
+                if signal.signal not in ("BUY", "SELL"):
+                    out.append(self.dispatch(symbol, signal, frame, current_price=0.0, now=now, send=send))
+                    continue
+                data = self.runtime.provider.fetch(
+                    f"{symbol}.NS", period="1d", interval="1m", validate_hourly=False
+                )
+                if data.empty:
+                    continue
                 out.append(
                     self.dispatch(
                         symbol,
                         signal,
                         frame,
-                        current_price=float(
-                            self.runtime.provider.fetch(
-                                f"{symbol}.NS", period="1d", interval="1m", validate_hourly=False
-                            ).close.iloc[-1]
-                        ),
+                        current_price=float(data.close.iloc[-1]),
                         now=now,
                         send=send,
                     )
