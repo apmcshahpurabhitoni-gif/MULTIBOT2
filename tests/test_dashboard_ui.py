@@ -13,8 +13,8 @@ def test_dashboard_keeps_approved_theme_and_mobile_contract():
     assert 'html[data-theme="dark"]' in CSS
     assert 'html[data-style="neo"]' in CSS
     assert 'prefers-reduced-motion: reduce' in CSS
-    assert 'position: fixed' in CSS
-    assert 'bottom: 7px' in CSS
+    assert 'position: fixed' in CSS or 'position:fixed' in CSS
+    assert 'bottom: 7px' in CSS or 'bottom:7px' in CSS
 
 
 def test_dashboard_keeps_trading_presentation_layers_separate():
@@ -57,3 +57,4 @@ def test_dashboard_does_not_recalculate_execution_risk_or_freshness():
     assert 'riskPerUnit*qty' not in APP
     assert 'Date.now()-new Date(value)' not in APP
     assert 'freshnessMs' not in APP
+    assert 'function ageLabel' not in APP
