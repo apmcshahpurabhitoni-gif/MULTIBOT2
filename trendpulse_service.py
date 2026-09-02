@@ -90,8 +90,19 @@ class TrendPulseService:
         current = self._now(now)
         account = self.accounts[account_name]
 
+        # NO_SIGNAL / NEUTRAL is normal scanner output, not a rejection.
+        # Keep TrendPulse completely silent unless there is a directional signal.
         if signal.signal not in ("BUY", "SELL"):
-            return self._reject(scan.symbol, signal, "NO_DIRECTIONAL_SIGNAL", send=send, account_name=account_name)
+            return TrendPulseDispatchResult(
+                scan.symbol,
+                signal,
+                scan,
+                None,
+                None,
+                False,
+                "NO_DIRECTIONAL_SIGNAL",
+                account_name,
+            )
         if not scan.fresh or self.runtime.gate.age_hours(signal, now=current) > SIGNAL_FRESHNESS_HOURS:
             return self._reject(scan.symbol, signal, "STALE_SIGNAL", send=send, account_name=account_name)
 
