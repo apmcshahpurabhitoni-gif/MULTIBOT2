@@ -11,9 +11,9 @@ import os
 from urllib import parse, request
 
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.6")
+APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.7")
 BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
-DASHBOARD_URL = "https://multibot2-t74l.onrender.com"
+DASHBOARD_URL = "https://multibot2-t74l.onrender.com/dashboard"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,10 +51,11 @@ def whats_new_message() -> str:
     return (
         f"🆕 WHAT'S NEW — v{APP_VERSION}\n{BR}\n"
         "➕ ADDED / IMPROVED\n"
-        "🌐 Dashboard link is now included directly in every startup message\n"
-        "⚡ One tap from Telegram to open the live dashboard\n"
+        "🌐 Dashboard link now points directly to /dashboard in every startup message\n"
+        "⚡ One tap from Telegram opens the live dashboard page\n"
         "🎨 Premium dashboard visual hierarchy and responsive presentation\n\n"
         "🛠️ FIXED / PRESERVED\n"
+        "🔗 Fixed the startup dashboard URL from the service root to the actual dashboard route\n"
         "📐 Stronger dashboard cards, spacing, navigation and visual depth\n"
         "📱 Improved mobile dashboard presentation\n"
         "🌙 Dark and Neo-Brutalist themes preserved\n"
