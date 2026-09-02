@@ -280,7 +280,12 @@ def snapshot() -> dict:
 
 def web_server() -> None:
     root = os.path.dirname(__file__)
-    files = {"/": ("dashboard.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "application/javascript"), "/styles.css": ("styles.css", "text/css")}
+    files = {
+        "/": ("dashboard.html", "text/html; charset=utf-8"),
+        "/dashboard": ("dashboard.html", "text/html; charset=utf-8"),
+        "/app.js": ("app.js", "application/javascript"),
+        "/styles.css": ("styles.css", "text/css"),
+    }
 
     def app(env, start):
         path = env.get("PATH_INFO", "/")
