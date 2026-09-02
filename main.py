@@ -1,8 +1,7 @@
 """Complete MULTIBOT2 application runtime.
 
-Single runtime entry point for the locked paper-trading bot.  Telegram user-facing
-messages are delegated to telegram.py; persistence is delegated to db.py.
-No pending-sweep workflow exists in this runtime.
+The dashboard is presentation-only. Strategy, freshness, risk, execution,
+persistence and Telegram rules remain server-side and canonical.
 """
 from __future__ import annotations
 
@@ -12,21 +11,42 @@ import os
 import threading
 import time
 from urllib import parse, request
-
-import pandas as pd
 from wsgiref.simple_server import make_server
 
+import pandas as pd
+
+from backtest import sweep_backtest, trendpulse_backtest
 from config import (
-    ACCOUNT_NAMES, ACCOUNT_SIZE_INR, ACCOUNT_TRADE_LIMITS, IST_TIMEZONE,
-    NSE_15_SYMBOLS, RISK_PER_TRADE_INR, settings, validate_configuration,
+    ACCOUNT_NAMES,
+    ACCOUNT_SIZE_INR,
+    ACCOUNT_TRADE_LIMITS,
+    IST_TIMEZONE,
+    NSE_15_SYMBOLS,
+    RISK_PER_TRADE_INR,
+    settings,
+    validate_configuration,
 )
 from db import DatabaseManager
+from news import NewsService
 from reminders import ReminderService
 from sweep_service import SweepService
 from telegram import (
-    TelegramConfig, TelegramMessage, send_message, msg_backtest, msg_balance,
-    msg_error, msg_news_pause, msg_news_refresh, msg_risk, msg_scan_result,
-    msg_scan_started, msg_start, msg_stats, msg_summary, msg_test, msg_weekly,
+    TelegramConfig,
+    TelegramMessage,
+    msg_backtest,
+    msg_balance,
+    msg_error,
+    msg_news_pause,
+    msg_news_refresh,
+    msg_risk,
+    msg_scan_result,
+    msg_scan_started,
+    msg_start,
+    msg_stats,
+    msg_summary,
+    msg_test,
+    msg_weekly,
+    send_message,
     trade_closed_message,
 )
 from trading import AccountState
@@ -38,6 +58,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(
 logger = logging.getLogger("multibot2")
 
 DB = DatabaseManager(settings.db_path)
+NEWS = NewsService()
 ACCOUNTS: dict[str, AccountState] = {}
 ACTIVE: list[dict] = []
 HISTORY: list[dict] = []
@@ -49,6 +70,8 @@ REMINDERS: ReminderService | None = None
 STOP = threading.Event()
 LOCK = threading.RLock()
 NEWS_PAUSE_ENABLED = False
+LAST_SCAN: dict = {"status": "NOT_RUN", "at": None, "checked": 0, "directional": 0, "sent": 0}
+
 
 
 def now() -> pd.Timestamp:
@@ -73,7 +96,7 @@ def validate_runtime_configuration() -> None:
 
 
 def init_state() -> None:
-    global ACCOUNTS, ACTIVE, HISTORY
+    global ACCOUNTS, ACTIVE, HISTORY, SIGNALS
     rows = DB.load_accounts(ACCOUNT_NAMES, ACCOUNT_SIZE_INR, now().date().isoformat())
     ACCOUNTS = {
         name: AccountState(
@@ -87,6 +110,7 @@ def init_state() -> None:
     }
     ACTIVE = DB.load_trades("OPEN")
     HISTORY = DB.load_trades("CLOSED")
+    SIGNALS = DB.load_signal_history(500)
 
 
 def ensure_runtime() -> None:
@@ -141,47 +165,50 @@ def record_result(result) -> None:
     persist_account(ACCOUNTS[result.account])
 
 
+def _record_signal(result) -> None:
+    global SIGNALS
+    if not result.sent or result.signal.signal not in ("BUY", "SELL"):
+        return
+    SIGNALS = DB.load_signal_history(500)
+
+
 def run_trendpulse_cycle(*, now_at=None, send=True, period="30d"):
+    global LAST_SCAN
     ensure_runtime()
-    results = TREND.scan_universe_and_dispatch(
-        now=now_at, period=period, send=send, account_name="nifty"
-    )
+    results = TREND.scan_universe_and_dispatch(now=now_at, period=period, send=send, account_name="nifty")
     for result in results:
-        if result.signal.signal in ("BUY", "SELL"):
-            SIGNALS.append({
-                "strategy": result.signal.strategy,
-                "symbol": result.symbol,
-                "signal": result.signal.signal,
-                "timestamp": result.signal.timestamp.isoformat(),
-                "reason": result.signal.reason,
-            })
+        _record_signal(result)
         record_result(result)
+    LAST_SCAN = {
+        "status": "COMPLETE",
+        "at": now().isoformat(),
+        "checked": len(NSE_15_SYMBOLS),
+        "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results),
+        "sent": sum(bool(r.sent) for r in results),
+    }
     return results
 
 
 def run_sweep_cycle(*, now_at=None, send=True, period="30d"):
+    global LAST_SCAN
     ensure_runtime()
-    results = SWEEP.scan_universe_and_dispatch(
-        now=now_at, period=period, send=send
-    )
+    results = SWEEP.scan_universe_and_dispatch(now=now_at, period=period, send=send)
     for result in results:
-        if result.signal.signal in ("BUY", "SELL"):
-            SIGNALS.append({
-                "strategy": result.signal.strategy,
-                "symbol": result.symbol,
-                "signal": result.signal.signal,
-                "timestamp": result.signal.timestamp.isoformat(),
-                "reason": result.signal.reason,
-            })
+        _record_signal(result)
         record_result(result)
+    LAST_SCAN = {
+        "status": "COMPLETE",
+        "at": now().isoformat(),
+        "checked": len(NSE_15_SYMBOLS),
+        "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results),
+        "sent": sum(bool(r.sent) for r in results),
+    }
     return results
 
 
 def _price(symbol: str) -> float | None:
     try:
-        data = RUNTIME.provider.fetch(
-            f"{symbol}.NS", period="1d", interval="1m", validate_hourly=False
-        )
+        data = RUNTIME.provider.fetch(f"{symbol}.NS", period="1d", interval="1m", validate_hourly=False)
         return None if data.empty else float(data.close.iloc[-1])
     except Exception:
         return None
@@ -249,6 +276,55 @@ def monitor_loop() -> None:
         STOP.wait(settings.monitor_interval_seconds)
 
 
+def _backtest_payload(strategy: str, symbol: str, period: str) -> dict:
+    ensure_runtime()
+    strategy_key = strategy.strip().lower().replace(" ", "")
+    if strategy_key not in {"trendpulse", "sweepv2", "sweep"}:
+        raise ValueError("strategy must be TrendPulse or Sweep V2")
+    symbol = symbol.strip().upper()
+    if symbol not in NSE_15_SYMBOLS:
+        raise ValueError("symbol must belong to the locked NSE-15 universe")
+    if period not in {"5d", "30d", "60d", "90d", "1y"}:
+        raise ValueError("period must be one of 5d, 30d, 60d, 90d or 1y")
+
+    frame = RUNTIME.provider.fetch(f"{symbol}.NS", period=period, interval="1h", validate_hourly=True)
+    result = trendpulse_backtest(frame, account="nifty") if strategy_key == "trendpulse" else sweep_backtest(frame, account="sweep_4h")
+    daily: dict[str, dict[str, int]] = {}
+    rows = []
+    for item in result.signals:
+        signal = item.signal
+        if signal.signal not in ("BUY", "SELL"):
+            continue
+        day = pd.Timestamp(item.candle_timestamp).tz_convert(IST_TIMEZONE).strftime("%d %b")
+        bucket = daily.setdefault(day, {"buy": 0, "sell": 0, "total": 0})
+        bucket[signal.signal.lower()] += 1
+        bucket["total"] += 1
+        rows.append({
+            "timestamp": signal.timestamp.isoformat(),
+            "direction": signal.signal,
+            "reason": signal.reason,
+            "entry": signal.entry,
+        })
+    daily_rows = [{"date": date, **values} for date, values in daily.items()]
+    return {
+        "strategy": result.strategy,
+        "symbol": symbol,
+        "period": period,
+        "account": result.account,
+        "starting_account": result.starting_account,
+        "total_signals": result.total_signals,
+        "buy_signals": result.buy_signals,
+        "sell_signals": result.sell_signals,
+        "neutral_signals": result.neutral_signals,
+        "trades_taken": result.trades_taken,
+        "planned_risk": result.planned_risk,
+        "candle_count": len(frame),
+        "daily": daily_rows,
+        "signals": rows[-200:],
+        "generated_at": now().isoformat(),
+    }
+
+
 def snapshot() -> dict:
     ensure_runtime()
     with LOCK:
@@ -266,16 +342,25 @@ def snapshot() -> dict:
             }
             for a in ACCOUNTS.values()
         ]
+        news = NEWS.get()
         return {
             "system": {"status": "ONLINE", "mode": "PAPER", "timezone": IST_TIMEZONE, "timeframe": "1h", "leverage": 1},
             "rules": {"account_size_inr": ACCOUNT_SIZE_INR, "risk_per_trade_inr": RISK_PER_TRADE_INR, "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS), "signal_freshness_hours": 1},
             "universe": {"count": 15, "symbols": list(NSE_15_SYMBOLS), "fixed": True},
             "accounts": {"count": 4, "names": list(ACCOUNT_NAMES), "data": account_rows},
-            "signals": list(reversed(SIGNALS[-500:])),
+            "signals": list(SIGNALS[:500]),
             "trades": ACTIVE + HISTORY[:200],
             "counts": {"signals": len(SIGNALS), "trades": len(ACTIVE) + len(HISTORY), "open_trades": len(ACTIVE), "closed_trades": len(HISTORY)},
+            "scan": dict(LAST_SCAN),
+            "news": news,
             "generated_at": now().isoformat(),
         }
+
+
+def _json_response(start, payload, status="200 OK"):
+    body = json.dumps(payload, default=str).encode()
+    start(status, [("Content-Type", "application/json"), ("Cache-Control", "no-store")])
+    return [body]
 
 
 def web_server() -> None:
@@ -289,20 +374,37 @@ def web_server() -> None:
 
     def app(env, start):
         path = env.get("PATH_INFO", "/")
+        query = parse.parse_qs(env.get("QUERY_STRING", ""))
         if path in ("/ping", "/api/health"):
-            body = b"pong" if path == "/ping" else json.dumps({"ok": True, "status": "ONLINE", "timestamp": now().isoformat()}).encode()
-            typ = "text/plain" if path == "/ping" else "application/json"
-        elif path == "/api/dashboard":
-            body = json.dumps(snapshot(), default=str).encode(); typ = "application/json"
-        elif path in files:
+            payload = {"ok": True, "status": "ONLINE", "timestamp": now().isoformat()}
+            if path == "/ping":
+                start("200 OK", [("Content-Type", "text/plain"), ("Cache-Control", "no-store")])
+                return [b"pong"]
+            return _json_response(start, payload)
+        if path == "/api/dashboard":
+            return _json_response(start, snapshot())
+        if path == "/api/news":
+            return _json_response(start, NEWS.refresh() if query.get("refresh") == ["1"] else NEWS.get())
+        if path == "/api/backtest":
+            try:
+                strategy = query.get("strategy", ["TrendPulse"])[0]
+                symbol = query.get("symbol", [NSE_15_SYMBOLS[0]])[0]
+                period = query.get("period", ["30d"])[0]
+                return _json_response(start, _backtest_payload(strategy, symbol, period))
+            except Exception as exc:
+                return _json_response(start, {"ok": False, "error": str(exc)}, "400 Bad Request")
+        if path in files:
             name, typ = files[path]
             try:
-                body = open(os.path.join(root, name), "rb").read()
+                with open(os.path.join(root, name), "rb") as handle:
+                    body = handle.read()
             except OSError:
-                start("404 Not Found", [("Content-Type", "text/plain")]); return [b"Not found"]
-        else:
-            start("404 Not Found", [("Content-Type", "text/plain")]); return [b"Not found"]
-        start("200 OK", [("Content-Type", typ), ("Cache-Control", "no-store")]); return [body]
+                start("404 Not Found", [("Content-Type", "text/plain")])
+                return [b"Not found"]
+            start("200 OK", [("Content-Type", typ), ("Cache-Control", "no-store")])
+            return [body]
+        start("404 Not Found", [("Content-Type", "text/plain")])
+        return [b"Not found"]
 
     make_server("0.0.0.0", int(os.getenv("PORT", "10000")), app).serve_forever()
 
@@ -343,6 +445,7 @@ def _handle_command(chat_id: str, cmd: str) -> None:
             NEWS_PAUSE_ENABLED = not NEWS_PAUSE_ENABLED
             _send_chat(chat_id, msg_news_pause(NEWS_PAUSE_ENABLED))
         elif cmd == "/refreshnews":
+            NEWS.refresh()
             _send_chat(chat_id, msg_news_refresh())
         elif cmd == "/backtest":
             _send_chat(chat_id, msg_backtest())
