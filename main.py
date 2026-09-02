@@ -17,37 +17,18 @@ import pandas as pd
 
 from backtest import sweep_backtest, trendpulse_backtest
 from config import (
-    ACCOUNT_NAMES,
-    ACCOUNT_SIZE_INR,
-    ACCOUNT_TRADE_LIMITS,
-    IST_TIMEZONE,
-    NSE_15_SYMBOLS,
-    RISK_PER_TRADE_INR,
-    settings,
-    validate_configuration,
+    ACCOUNT_NAMES, ACCOUNT_SIZE_INR, ACCOUNT_TRADE_LIMITS, IST_TIMEZONE,
+    NSE_15_SYMBOLS, RISK_PER_TRADE_INR, settings, validate_configuration,
 )
 from db import DatabaseManager
 from news import NewsService
 from reminders import ReminderService
 from sweep_service import SweepService
 from telegram import (
-    TelegramConfig,
-    TelegramMessage,
-    msg_backtest,
-    msg_balance,
-    msg_error,
-    msg_news_pause,
-    msg_news_refresh,
-    msg_risk,
-    msg_scan_result,
-    msg_scan_started,
-    msg_start,
-    msg_stats,
-    msg_summary,
-    msg_test,
-    msg_weekly,
-    send_message,
-    trade_closed_message,
+    TelegramConfig, TelegramMessage, msg_backtest, msg_balance, msg_error,
+    msg_news_pause, msg_news_refresh, msg_risk, msg_scan_result,
+    msg_scan_started, msg_start, msg_stats, msg_summary, msg_test, msg_weekly,
+    send_message, trade_closed_message,
 )
 from trading import AccountState
 from trendpulse_runtime import TrendPulseRuntime
@@ -71,7 +52,6 @@ STOP = threading.Event()
 LOCK = threading.RLock()
 NEWS_PAUSE_ENABLED = False
 LAST_SCAN: dict = {"status": "NOT_RUN", "at": None, "checked": 0, "directional": 0, "sent": 0}
-
 
 
 def now() -> pd.Timestamp:
@@ -144,6 +124,7 @@ def trade_row(result) -> dict:
         "id": f"{result.account}_{result.symbol}_{int(time.time() * 1000)}",
         "status": "OPEN",
         "symbol": result.symbol,
+        "market": "NSE",
         "account": result.account,
         "strategy": plan.strategy,
         "type": plan.side,
@@ -151,6 +132,8 @@ def trade_row(result) -> dict:
         "sl": plan.stop_loss,
         "tp": plan.take_profit,
         "qty": result.trade.quantity,
+        "risk_per_unit": plan.risk_per_unit,
+        "planned_risk": result.trade.planned_risk,
         "signal_ts": plan.signal_timestamp.isoformat(),
         "opened_at": now().isoformat(),
     }
@@ -241,7 +224,7 @@ def monitor_once() -> None:
             account.name,
             account.starting_balance,
             account.balance + pnl,
-            max(0.0, account.planned_risk_used - abs(float(row["entry"]) - float(row["sl"])) * float(row["qty"])),
+            max(0.0, account.planned_risk_used - float(row.get("planned_risk", 0.0))),
             account.trades_today,
         )
         ACCOUNTS[row["account"]] = updated
@@ -342,7 +325,6 @@ def snapshot() -> dict:
             }
             for a in ACCOUNTS.values()
         ]
-        news = NEWS.get()
         return {
             "system": {"status": "ONLINE", "mode": "PAPER", "timezone": IST_TIMEZONE, "timeframe": "1h", "leverage": 1},
             "rules": {"account_size_inr": ACCOUNT_SIZE_INR, "risk_per_trade_inr": RISK_PER_TRADE_INR, "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS), "signal_freshness_hours": 1},
@@ -352,7 +334,7 @@ def snapshot() -> dict:
             "trades": ACTIVE + HISTORY[:200],
             "counts": {"signals": len(SIGNALS), "trades": len(ACTIVE) + len(HISTORY), "open_trades": len(ACTIVE), "closed_trades": len(HISTORY)},
             "scan": dict(LAST_SCAN),
-            "news": news,
+            "news": NEWS.get(),
             "generated_at": now().isoformat(),
         }
 
