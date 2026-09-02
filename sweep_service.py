@@ -114,12 +114,7 @@ class SweepService:
         for symbol in NSE_15_SYMBOLS:
             try:
                 signal,frame=self.scan_symbol(symbol,period=period)
-                if signal.signal=="NO_SIGNAL":continue
-                if signal.signal=="NEUTRAL":
-                    if send:
-                        result=detect_sweep(frame,symbol,current)
-                        if result:self._send(self._neutral_message(symbol,result,current))
-                    continue
+                if signal.signal in ("NO_SIGNAL","NEUTRAL"):continue
                 price=self._price(symbol+'.NS')
                 if price is not None:out.append(self.dispatch(symbol,signal,frame,current_price=price,now=current,send=send,account_name="sweep_4h"))
             except Exception:continue
