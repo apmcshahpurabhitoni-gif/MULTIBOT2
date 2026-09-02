@@ -39,10 +39,13 @@ def test_stale_signal_never_sends(tmp_path,monkeypatch):
 def test_non_directional_scan_is_silent(tmp_path,monkeypatch):
     runtime,service=make_service(tmp_path)
     signal=StrategySignal("TrendPulse","NEUTRAL",pd.Timestamp("2026-09-01 12:00:00+05:30"),"NO_SETUP",100.0,2.0)
-    sent=[]
-    monkeypatch.setattr("trendpulse_service.send_message",lambda message,config:sent.append(message))
+    sent=[];monkeypatch.setattr("trendpulse_service.send_message",lambda message,config:sent.append(message))
     result=service.dispatch_result(make_scan(signal),now=pd.Timestamp("2026-09-01 12:30:00+05:30"),send=True)
-    assert not result.sent
-    assert result.reason=="NO_DIRECTIONAL_SIGNAL"
-    assert result.message is None
-    assert sent==[]
+    assert not result.sent and result.reason=="NO_DIRECTIONAL_SIGNAL" and result.message is None and sent==[]
+
+def test_rejection_diagnostics_never_send_to_telegram(tmp_path,monkeypatch):
+    runtime,service=make_service(tmp_path);sent=[]
+    monkeypatch.setattr("trendpulse_service.send_message",lambda message,config:sent.append(message))
+    stale=make_signal("2026-09-01 10:00:00+05:30")
+    result=service.dispatch_result(make_scan(stale,False),now=pd.Timestamp("2026-09-01 12:30:00+05:30"),send=True)
+    assert result.reason=="STALE_SIGNAL" and not result.sent and result.message is not None and sent==[]

@@ -11,22 +11,17 @@ import os
 from urllib import parse, request
 
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.2")
+APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.3")
 BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger("multibot2.startup")
-
 BR = "━━━━━━━━━━━━━━━━━━━━━━"
 
 
 def telegram_send(token: str, chat_id: str, text: str) -> None:
-    payload = parse.urlencode({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
-    req = request.Request(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        data=payload,
-        method="POST",
-    )
+    payload = parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+    req = request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=payload, method="POST")
     with request.urlopen(req, timeout=20) as response:
         data = json.loads(response.read())
     if not data.get("ok"):
@@ -35,39 +30,36 @@ def telegram_send(token: str, chat_id: str, text: str) -> None:
 
 def startup_message() -> str:
     return (
-        f"🤖 *{APP_NAME} STARTED*\n"
-        f"{BR}\n"
-        f"🟢 Status: ONLINE\n"
-        f"🏷 Version: `{APP_VERSION}`\n"
-        f"🔖 Build: `{BUILD}`\n"
-        f"🧪 Mode: PAPER\n"
-        f"🇮🇳 Market: NSE-15\n"
-        f"⏱ Timeframe: 1H\n"
-        f"⏳ Signal freshness: 1h\n"
-        f"💾 Persistence: Supabase\n"
-        f"{BR}"
+        f"🤖 {APP_NAME} STARTED\n{BR}\n"
+        f"🟢 Status: ONLINE\n🏷 Version: {APP_VERSION}\n🔖 Build: {BUILD}\n"
+        "🧪 Mode: PAPER\n🇮🇳 Market: NSE-15\n⏱ Timeframe: 1H\n"
+        "⏳ Signal freshness: 1h\n💾 Persistence: Supabase\n" + BR
     )
 
 
 def whats_new_message() -> str:
     return (
-        "🆕 *WHAT'S NEW — v1.0.2*\n"
-        f"{BR}\n"
-        "🛠️ *FIXED*\n"
-        "🚫 TrendPulse NO_SIGNAL / NEUTRAL no longer sends `SIGNAL NOT SENT`\n"
-        "🚫 Normal 15-symbol scans no longer generate 15 rejection messages\n"
-        "🟡 Sweep neutral results are informational, not trade rejections\n"
-        "\n"
-        "➕ *ADDED / IMPROVED*\n"
-        "🔎 Scheduled Sweep checking messages\n"
-        "⏱️ Canonical Sweep schedules for Crypto, Forex/Gold, NIFTY/BANKNIFTY and NSE\n"
-        "🕯️ Original Sweep candle timing/close validation retained\n"
-        "🚫 No FVG logic added\n"
-        "🧭 Version/build identification on every bot restart\n"
-        "🧪 Regression test added to enforce silent non-directional TrendPulse scans\n"
-        "📋 What's New now records fixes and additions per release\n"
-        f"{BR}"
+        f"🆕 WHAT'S NEW — v{APP_VERSION}\n{BR}\n"
+        "🛠️ FIXED\n"
+        "🚫 Automated TrendPulse NO_SIGNAL / NEUTRAL scans are silent\n"
+        "🚫 Automated stale/duplicate/limit rejections no longer send SIGNAL NOT SENT spam\n"
+        "🚫 A normal 15-symbol scan cannot produce 15 rejection notifications\n"
+        "🟡 Sweep neutral results remain informational, not trade rejections\n\n"
+        "➕ ADDED / IMPROVED\n"
+        "🧪 Regression coverage for non-directional and rejection-silence behavior\n"
+        "📨 Startup and What's New are sent independently\n"
+        "🛡️ Startup announcements no longer depend on Markdown parsing\n"
+        "🧭 Version/build is reported on every restart\n"
+        "🚫 No FVG logic added\n" + BR
     )
+
+
+def _send_startup_notice(token: str, chat_id: str, label: str, text: str) -> None:
+    try:
+        telegram_send(token, chat_id, text)
+        logger.info("%s announcement sent: version=%s build=%s", label, APP_VERSION, BUILD)
+    except Exception as exc:
+        logger.warning("%s announcement failed: %s", label, exc)
 
 
 def main() -> int:
@@ -76,13 +68,8 @@ def main() -> int:
     if not token or not chat_id:
         logger.warning("Startup Telegram announcement skipped: Telegram credentials are missing")
         return 0
-
-    try:
-        telegram_send(token, chat_id, startup_message())
-        telegram_send(token, chat_id, whats_new_message())
-        logger.info("Startup announcements sent: version=%s build=%s", APP_VERSION, BUILD)
-    except Exception as exc:
-        logger.warning("Startup Telegram announcement failed: %s", exc)
+    _send_startup_notice(token, chat_id, "startup", startup_message())
+    _send_startup_notice(token, chat_id, "whats-new", whats_new_message())
     return 0
 
 
