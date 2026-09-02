@@ -1,64 +1,190 @@
 """Central, locked configuration for MULTIBOT2."""
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Final
 
-APP_VERSION = "1.1.0"
-IST_TIMEZONE = "Asia/Kolkata"
-DEFAULT_TIMEFRAME = "1h"
-SIGNAL_FRESHNESS_HOURS = 1
-NSE_MARKET_OPEN = "09:15"
-NSE_MARKET_CLOSE = "15:30"
-MARKET_DATA_PROVIDER = "yahoo"
-NSE_15_SYMBOLS = (
-    "RELIANCE", "BHARTIARTL", "HDFCBANK", "ICICIBANK", "SBIN", "TCS",
-    "BAJFINANCE", "LT", "LICI", "SUNPHARMA", "HINDUNILVR", "INFY",
-    "TITAN", "MARUTI", "KOTAKBANK",
+
+APP_VERSION = "2.0.0"
+
+IST_TIMEZONE: Final = "Asia/Kolkata"
+DEFAULT_TIMEFRAME: Final = "1h"
+SIGNAL_FRESHNESS_HOURS: Final = 1
+
+NSE_MARKET_OPEN: Final = "09:15"
+NSE_MARKET_CLOSE: Final = "15:30"
+
+MARKET_DATA_PROVIDER: Final = "yahoo"
+
+
+# ---------------------------------------------------------------------------
+# LIVE UNIVERSE
+# ---------------------------------------------------------------------------
+
+NSE_15_SYMBOLS: Final[tuple[str, ...]] = (
+    "RELIANCE",
+    "BHARTIARTL",
+    "HDFCBANK",
+    "ICICIBANK",
+    "SBIN",
+    "TCS",
+    "BAJFINANCE",
+    "LT",
+    "LICI",
+    "SUNPHARMA",
+    "HINDUNILVR",
+    "INFY",
+    "TITAN",
+    "MARUTI",
+    "KOTAKBANK",
 )
-ACCOUNT_SIZE_INR = 100_000
-RISK_PER_TRADE_INR = 2_000
-ACCOUNT_TRADE_LIMITS = {"macro": 20, "nifty": 5, "ny_session": 3, "sweep_4h": 3}
-ACCOUNT_NAMES = ("macro", "nifty", "ny_session", "sweep_4h")
-LEVERAGE = 1.0
 
-# Backtesting is informational and may include additional Yahoo-supported assets.
-# These symbols do not alter the locked live NSE-15 universe.
-BACKTEST_ASSETS = {
-    **{
-        symbol: {
-            "label": symbol,
-            "ticker": f"{symbol}.NS",
-            "market": "NSE",
-            "asset_type": "equity",
-            "group": "NSE-15",
-        }
-        for symbol in NSE_15_SYMBOLS
-    },
-    "BTC-USD": {
-        "label": "Bitcoin",
-        "ticker": "BTC-USD",
-        "market": "Crypto",
-        "asset_type": "crypto",
-        "group": "Digital assets",
-    },
-    "GC=F": {
-        "label": "Gold Futures",
-        "ticker": "GC=F",
-        "market": "COMEX",
-        "asset_type": "commodity",
-        "group": "Metals",
-    },
+NIFTY_SYMBOLS: Final[tuple[str, ...]] = (
+    "^NSEI",
+    "^NSEBANK",
+)
+
+GOLD_SYMBOL: Final[str] = "GC=F"
+BITCOIN_SYMBOL: Final[str] = "BTC-USD"
+
+
+@dataclass(frozen=True)
+class AssetConfig:
+    symbol: str
+    label: str
+    yahoo_symbol: str
+    market: str
+    asset_type: str
+
+    # TrendPulse
+    trendpulse_signal_timeframe: str = "1H"
+    trendpulse_filter_timeframe: str = "4H"
+
+    # Sweep
+    sweep_timeframe: str = "4H"
+
+
+def _equity(symbol: str) -> AssetConfig:
+    return AssetConfig(
+        symbol=symbol,
+        label=symbol,
+        yahoo_symbol=f"{symbol}.NS",
+        market="NSE",
+        asset_type="equity",
+        sweep_timeframe="4H",
+    )
+
+
+LIVE_ASSETS: tuple[AssetConfig, ...] = tuple(
+    _equity(symbol) for symbol in NSE_15_SYMBOLS
+) + (
+    AssetConfig(
+        symbol="^NSEI",
+        label="NIFTY 50",
+        yahoo_symbol="^NSEI",
+        market="NSE",
+        asset_type="index",
+        sweep_timeframe="1H",
+    ),
+    AssetConfig(
+        symbol="^NSEBANK",
+        label="BANK NIFTY",
+        yahoo_symbol="^NSEBANK",
+        market="NSE",
+        asset_type="index",
+        sweep_timeframe="1H",
+    ),
+    AssetConfig(
+        symbol="GC=F",
+        label="Gold (XAU/USD)",
+        yahoo_symbol="GC=F",
+        market="Gold",
+        asset_type="commodity",
+        sweep_timeframe="4H",
+    ),
+    AssetConfig(
+        symbol="BTC-USD",
+        label="Bitcoin (BTC)",
+        yahoo_symbol="BTC-USD",
+        market="Crypto",
+        asset_type="crypto",
+        sweep_timeframe="4H",
+    ),
+)
+
+
+LIVE_ASSET_MAP: Final[dict[str, AssetConfig]] = {
+    asset.symbol: asset for asset in LIVE_ASSETS
 }
 
-WHAT_IS_NEW = [
-    "Forex Factory economic calendar with date and impact filters.",
-    "Historical backtests now support NSE-15, Bitcoin and Gold Futures.",
-    "Backtest results include daily signal charts and execution statistics.",
-    "Fixed the modern yfinance session error that blocked historical tests.",
-    "Polished light/dark and modern/neo-brutalist dashboard spacing and controls.",
-    "Signals are grouped by candle date and show scan status separately from dispatched history.",
-]
+
+LIVE_SYMBOLS: Final[tuple[str, ...]] = tuple(
+    asset.symbol for asset in LIVE_ASSETS
+)
+
+
+# ---------------------------------------------------------------------------
+# SWEEP SCHEDULES
+# ---------------------------------------------------------------------------
+
+BTC_SWEEP_HOURS_IST: Final[tuple[int, ...]] = (
+    1, 5, 9, 13, 17, 21
+)
+
+GOLD_SWEEP_HOURS_IST: Final[tuple[int, ...]] = (
+    2, 6, 10, 14, 18, 22
+)
+
+NSE_INDEX_SWEEP_HOURS_IST: Final[tuple[int, ...]] = (
+    9, 10, 11, 12, 13, 14
+)
+
+SWEEP_MINUTE_NSE: Final[int] = 15
+SWEEP_MINUTE_GLOBAL: Final[int] = 30
+
+
+# ---------------------------------------------------------------------------
+# ACCOUNT / RISK
+# ---------------------------------------------------------------------------
+
+ACCOUNT_SIZE_INR = 100_000
+RISK_PER_TRADE_INR = 2_000
+
+ACCOUNT_TRADE_LIMITS = {
+    "macro": 20,
+    "nifty": 5,
+    "ny_session": 3,
+    "sweep_4h": 3,
+}
+
+ACCOUNT_NAMES = (
+    "macro",
+    "nifty",
+    "ny_session",
+    "sweep_4h",
+)
+
+LEVERAGE = 1.0
+
+
+# ---------------------------------------------------------------------------
+# BACKTEST UNIVERSE
+# ---------------------------------------------------------------------------
+
+BACKTEST_ASSETS = {
+    asset.symbol: {
+        "label": asset.label,
+        "ticker": asset.yahoo_symbol,
+        "market": asset.market,
+        "asset_type": asset.asset_type,
+        "trendpulse_signal_timeframe": asset.trendpulse_signal_timeframe,
+        "trendpulse_filter_timeframe": asset.trendpulse_filter_timeframe,
+        "sweep_timeframe": asset.sweep_timeframe,
+    }
+    for asset in LIVE_ASSETS
+}
 
 
 @dataclass(frozen=True)
@@ -67,10 +193,13 @@ class Settings:
     timeframe: str = DEFAULT_TIMEFRAME
     freshness_hours: int = SIGNAL_FRESHNESS_HOURS
     market_data_provider: str = MARKET_DATA_PROVIDER
+
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+
     dashboard_api_url: str = "/api/dashboard"
     db_path: str = "multibot2_state.db"
+
     scan_interval_seconds: int = 300
     monitor_interval_seconds: int = 20
 
@@ -78,45 +207,140 @@ class Settings:
     def from_env(cls) -> "Settings":
         timezone = os.getenv("TIMEZONE", IST_TIMEZONE)
         timeframe = os.getenv("TIMEFRAME", DEFAULT_TIMEFRAME)
-        provider = os.getenv("MARKET_DATA_PROVIDER", MARKET_DATA_PROVIDER).strip().lower()
+        provider = os.getenv(
+            "MARKET_DATA_PROVIDER",
+            MARKET_DATA_PROVIDER,
+        ).strip().lower()
+
         if timezone != IST_TIMEZONE:
             raise ValueError("TIMEZONE must be Asia/Kolkata")
+
         if timeframe != DEFAULT_TIMEFRAME:
             raise ValueError("TIMEFRAME must be 1h")
+
         if provider != MARKET_DATA_PROVIDER:
-            raise ValueError("MARKET_DATA_PROVIDER must be yahoo")
+            raise ValueError(
+                "MARKET_DATA_PROVIDER must be yahoo"
+            )
+
         return cls(
-            timezone,
-            timeframe,
-            SIGNAL_FRESHNESS_HOURS,
-            provider,
-            os.getenv("TELEGRAM_BOT_TOKEN"),
-            os.getenv("TELEGRAM_CHAT_ID"),
-            os.getenv("DASHBOARD_API_URL", "/api/dashboard"),
-            os.getenv("BOT_STATE_DB_PATH", "multibot2_state.db"),
-            int(os.getenv("SCAN_INTERVAL_SECONDS", "300")),
-            int(os.getenv("MONITOR_INTERVAL_SECONDS", "20")),
+            timezone=timezone,
+            timeframe=timeframe,
+            freshness_hours=SIGNAL_FRESHNESS_HOURS,
+            market_data_provider=provider,
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
+            telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID"),
+            dashboard_api_url=os.getenv(
+                "DASHBOARD_API_URL",
+                "/api/dashboard",
+            ),
+            db_path=os.getenv(
+                "BOT_STATE_DB_PATH",
+                "multibot2_state.db",
+            ),
+            scan_interval_seconds=int(
+                os.getenv("SCAN_INTERVAL_SECONDS", "300")
+            ),
+            monitor_interval_seconds=int(
+                os.getenv("MONITOR_INTERVAL_SECONDS", "20")
+            ),
         )
 
 
 settings = Settings.from_env()
 
 
+def get_asset(symbol: str) -> AssetConfig:
+    normalized = symbol.strip().upper()
+
+    try:
+        return LIVE_ASSET_MAP[normalized]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown MULTIBOT2 live asset: {normalized}"
+        ) from exc
+
+
 def validate_configuration() -> None:
-    if MARKET_DATA_PROVIDER != "yahoo" or settings.market_data_provider != "yahoo":
-        raise ValueError("MULTIBOT2 market-data provider must be Yahoo Finance")
-    if len(NSE_15_SYMBOLS) != 15 or len(set(NSE_15_SYMBOLS)) != 15:
-        raise ValueError("NSE universe must contain exactly 15 unique symbols")
-    if ACCOUNT_SIZE_INR != 100_000 or RISK_PER_TRADE_INR != 2_000:
-        raise ValueError("Locked account/risk values were changed")
-    if settings.freshness_hours != 1:
-        raise ValueError("Signal freshness must remain locked at 1 hour")
-    if set(ACCOUNT_TRADE_LIMITS) != set(ACCOUNT_NAMES) or tuple(ACCOUNT_TRADE_LIMITS.values()) != (20, 5, 3, 3):
-        raise ValueError("Original independent account limits are required")
+    if len(NSE_15_SYMBOLS) != 15:
+        raise ValueError("NSE stock universe must contain 15 assets")
+
+    if len(LIVE_ASSETS) != 19:
+        raise ValueError(
+            f"Live universe must contain exactly 19 assets; "
+            f"found {len(LIVE_ASSETS)}"
+        )
+
+    if len(set(LIVE_SYMBOLS)) != 19:
+        raise ValueError(
+            "Live universe contains duplicate symbols"
+        )
+
+    if set(NIFTY_SYMBOLS) != {
+        "^NSEI",
+        "^NSEBANK",
+    }:
+        raise ValueError("NIFTY index configuration is invalid")
+
+    if GOLD_SYMBOL not in LIVE_ASSET_MAP:
+        raise ValueError("Gold is missing from live universe")
+
+    if BITCOIN_SYMBOL not in LIVE_ASSET_MAP:
+        raise ValueError("Bitcoin is missing from live universe")
+
+    for asset in LIVE_ASSETS:
+        if asset.trendpulse_signal_timeframe != "1H":
+            raise ValueError(
+                f"TrendPulse signal timeframe invalid for {asset.symbol}"
+            )
+
+        if asset.trendpulse_filter_timeframe != "4H":
+            raise ValueError(
+                f"TrendPulse filter timeframe invalid for {asset.symbol}"
+            )
+
+    if LIVE_ASSET_MAP["^NSEI"].sweep_timeframe != "1H":
+        raise ValueError("NIFTY 50 Sweep must be 1H")
+
+    if LIVE_ASSET_MAP["^NSEBANK"].sweep_timeframe != "1H":
+        raise ValueError("BANK NIFTY Sweep must be 1H")
+
+    for symbol in NSE_15_SYMBOLS:
+        if LIVE_ASSET_MAP[symbol].sweep_timeframe != "4H":
+            raise ValueError(
+                f"{symbol} Sweep must be 4H"
+            )
+
+    if LIVE_ASSET_MAP[GOLD_SYMBOL].sweep_timeframe != "4H":
+        raise ValueError("Gold Sweep must be 4H")
+
+    if LIVE_ASSET_MAP[BITCOIN_SYMBOL].sweep_timeframe != "4H":
+        raise ValueError("Bitcoin Sweep must be 4H")
+
+    if ACCOUNT_SIZE_INR != 100_000:
+        raise ValueError("Account size was changed")
+
+    if RISK_PER_TRADE_INR != 2_000:
+        raise ValueError("Risk per trade was changed")
+
     if LEVERAGE != 1.0:
-        raise ValueError("MULTIBOT2 uses 1x / no leverage")
-    if settings.scan_interval_seconds < 60 or settings.monitor_interval_seconds < 1:
-        raise ValueError("Runtime intervals are invalid")
+        raise ValueError("Leverage must remain 1x")
+
+    if settings.freshness_hours != 1:
+        raise ValueError(
+            "Signal freshness must remain 1 hour"
+        )
+
+    if set(ACCOUNT_TRADE_LIMITS) != set(ACCOUNT_NAMES):
+        raise ValueError("Account configuration mismatch")
+
+    if tuple(ACCOUNT_TRADE_LIMITS.values()) != (
+        20,
+        5,
+        3,
+        3,
+    ):
+        raise ValueError("Account limits were changed")
 
 
 validate_configuration()
