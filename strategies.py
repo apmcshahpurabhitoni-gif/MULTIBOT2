@@ -38,18 +38,43 @@ def macd(series,fast=12,slow=26,signal=9):
 def atr(frame,period=14):
     pc=frame.close.shift(1);tr=pd.concat([frame.high-frame.low,(frame.high-pc).abs(),(frame.low-pc).abs()],axis=1).max(axis=1);return tr.rolling(period).mean()
 def derive_4h_from_1h(candles_1h):
-    frame=normalize_index(candles_1h)
-    if frame.empty:return frame.copy()
-    rows=[]
-    for _,group in frame.groupby(frame.index.date):
-        group=group.sort_index()
-        for start in range(0,len(group),4):
-            chunk=group.iloc[start:start+4]
-            if len(chunk)!=4:continue
-            if not all((chunk.index[j]-chunk.index[j-1])==pd.Timedelta(hours=1) for j in range(1,4)):continue
-            rows.append({"timestamp":chunk.index[-1],"open":float(chunk.open.iloc[0]),"high":float(chunk.high.max()),"low":float(chunk.low.min()),"close":float(chunk.close.iloc[-1])})
-    if not rows:return pd.DataFrame(columns=["open","high","low","close"],index=pd.DatetimeIndex([],tz=IST_TIMEZONE))
-    out=pd.DataFrame(rows).set_index("timestamp");out.index=pd.DatetimeIndex(out.index).tz_convert(IST_TIMEZONE);return out
+    """Build confirmed 4H bars without crossing a session/day gap.
+
+    Four consecutive hourly candles are required.  A partial group is
+    discarded, so the current/incomplete higher-timeframe candle can never
+    become the TrendPulse filter.
+    """
+    frame = normalize_index(candles_1h)
+    if frame.empty:
+        return frame.copy()
+    rows = []
+    for _, group in frame.groupby(frame.index.date):
+        group = group.sort_index()
+        for start in range(0, len(group), 4):
+            chunk = group.iloc[start:start + 4]
+            if len(chunk) != 4:
+                continue
+            if any(
+                chunk.index[j] - chunk.index[j - 1] != pd.Timedelta(hours=1)
+                for j in range(1, 4)
+            ):
+                continue
+            rows.append({
+                "timestamp": chunk.index[-1],
+                "open": float(chunk.open.iloc[0]),
+                "high": float(chunk.high.max()),
+                "low": float(chunk.low.min()),
+                "close": float(chunk.close.iloc[-1]),
+            })
+    if not rows:
+        return pd.DataFrame(
+            columns=["open", "high", "low", "close"],
+            index=pd.DatetimeIndex([], tz=IST_TIMEZONE),
+        )
+    out = pd.DataFrame(rows).set_index("timestamp")
+    out.index = pd.DatetimeIndex(out.index).tz_convert(IST_TIMEZONE)
+    return out
+
 def trendpulse_from_frames(candles_1h,candles_4h=None,*,completed_only=True):
     one=normalize_index(candles_1h);four=derive_4h_from_1h(one) if candles_4h is None else normalize_index(candles_4h)
     if len(one)<50 or len(four)<15:

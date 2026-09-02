@@ -9,6 +9,14 @@ from typing import Final
 
 APP_VERSION = "2.0.0"
 
+WHAT_IS_NEW: Final[tuple[str, ...]] = (
+    "Live universe is locked to 19 assets: 15 NSE stocks + NIFTY + BANK NIFTY + Gold + Bitcoin.",
+    "TrendPulse evaluates a completed 1H signal with a confirmed 4H filter.",
+    "Sweep V2 uses strict two-sided sweeps and final-close classification on the canonical schedules.",
+    "NSE 1H candles are built from complete 09:15 session minutes; no 15:15→16:15 candle is created.",
+    "Yahoo Finance remains the sole market-data provider; Supabase is authoritative with SQLite fallback.",
+)
+
 IST_TIMEZONE: Final = "Asia/Kolkata"
 DEFAULT_TIMEFRAME: Final = "1h"
 SIGNAL_FRESHNESS_HOURS: Final = 1

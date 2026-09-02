@@ -49,8 +49,9 @@ Tests cover accounts, backtest, candles, configuration, dashboard UI, DB, main r
 - Timezone: `Asia/Kolkata`.
 - Timeframe: `1h`.
 - Market-data provider: Yahoo Finance.
-- Fixed NSE-15 universe:
+- Fixed 19-asset live universe:
   `RELIANCE`, `BHARTIARTL`, `HDFCBANK`, `ICICIBANK`, `SBIN`, `TCS`, `BAJFINANCE`, `LT`, `LICI`, `SUNPHARMA`, `HINDUNILVR`, `INFY`, `TITAN`, `MARUTI`, `KOTAKBANK`.
+  Plus `^NSEI`, `^NSEBANK`, `GC=F`, and `BTC-USD`.
 
 ## 4. Candle contract
 
@@ -138,7 +139,7 @@ Render starts the service with `pip install -e .` and `python main.py`. Runtime 
 The current runtime dashboard payload contains:
 - `system`: status, mode, timezone, timeframe, leverage
 - `rules`: account size, risk per trade, independent account limits, freshness
-- `universe`: fixed NSE-15 list
+- `universe`: fixed 19-asset live list
 - `accounts`: account balances, planned risk, limits and remaining capacity
 - `signals`: strategy, symbol, direction, timestamp and reason
 - `trades`: active and historical trade rows

@@ -10,10 +10,12 @@ import logging
 import os
 from urllib import parse, request
 
+from config import APP_VERSION as CONFIG_APP_VERSION
+
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.8")
+APP_VERSION = os.getenv("MULTIBOT2_VERSION", CONFIG_APP_VERSION)
 BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
-DASHBOARD_URL = "https://multibot2-t74l.onrender.com/dashboard"
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://multibot2-t74l.onrender.com/dashboard")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,7 +43,7 @@ def startup_message() -> str:
     return (
         f"🤖 {APP_NAME} STARTED\n{BR}\n"
         f"🟢 Status: ONLINE\n🏷 Version: {APP_VERSION}\n🔖 Build: {BUILD}\n"
-        "🧪 Mode: PAPER\n🇮🇳 Market: NSE-15\n⏱ Timeframe: 1H\n"
+        "🧪 Mode: PAPER\n🌐 Universe: 19 live assets\n📈 TrendPulse: 1H + confirmed 4H\n🔎 Sweep V2: scheduled 1H/4H\n"
         "⏳ Signal freshness: 1h\n💾 Persistence: Supabase\n\n"
         f"🌐 DASHBOARD\n👉 {DASHBOARD_URL}\n" + BR
     )
@@ -51,7 +53,7 @@ def whats_new_message() -> str:
     return (
         f"🆕 WHAT'S NEW — v{APP_VERSION}\n{BR}\n"
         "➕ ADDED / IMPROVED\n"
-        "🌐 Dashboard link now opens the actual /dashboard page\n"
+        "🌐 Dashboard link opens the actual /dashboard page\n"
         "⚡ One tap from Telegram opens the live dashboard\n"
         "🎨 Premium dashboard visual hierarchy and responsive presentation\n\n"
         "🛠️ FIXED / PRESERVED\n"

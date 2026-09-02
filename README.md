@@ -8,7 +8,7 @@ Complete paper-trading bot based on the original `multi-strategy-telegram-bot`, 
 
 - Forex Factory economic calendar in the dashboard, filtered by exact date and impact (High / Medium / Low / Holiday).
 - Calendar timestamps are normalized to Asia/Kolkata for the dashboard while preserving the Forex Factory source link.
-- Historical backtesting now supports the fixed NSE-15 universe plus Bitcoin (`BTC-USD`) and Gold Futures (`GC=F`).
+- Historical backtesting now supports the fixed 19-asset live universe plus Bitcoin (`BTC-USD`) and Gold Futures (`GC=F`).
 - Backtest results show directional totals, trades taken, planned risk and a daily signal graph.
 - Fixed the modern `yfinance` / `curl_cffi` session incompatibility that was causing historical backtests to fail.
 - Period-aware Yahoo caching prevents a previous 30-day fetch from being reused for a different backtest period.
@@ -22,7 +22,7 @@ Complete paper-trading bot based on the original `multi-strategy-telegram-bot`, 
 
 ## Locked rules
 
-- NSE-15 fixed live universe.
+- 19 live assets fixed live universe.
 - Yahoo Finance only.
 - NSE 1H candles are built from complete 60-minute 1m groups in the 09:15–15:30 cash session.
 - Valid hourly candle closes: 10:15, 11:15, 12:15, 13:15, 14:15, 15:15.
@@ -56,7 +56,7 @@ Backtesting is informational and does not change live trading configuration.
 
 Supported Yahoo assets:
 
-- NSE-15: the fixed live symbols using `.NS` tickers.
+- 19 live assets: the fixed live symbols using `.NS` tickers.
 - Bitcoin: `BTC-USD`.
 - Gold Futures: `GC=F`.
 

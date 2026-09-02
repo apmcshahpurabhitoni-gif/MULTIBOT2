@@ -18,8 +18,8 @@ import pandas as pd
 from backtest import sweep_backtest, trendpulse_backtest
 from config import (
     ACCOUNT_NAMES, ACCOUNT_SIZE_INR, ACCOUNT_TRADE_LIMITS, APP_VERSION,
-    BACKTEST_ASSETS, IST_TIMEZONE, NSE_15_SYMBOLS, RISK_PER_TRADE_INR,
-    WHAT_IS_NEW, settings, validate_configuration,
+    BACKTEST_ASSETS, IST_TIMEZONE, LIVE_ASSETS, LIVE_ASSET_MAP, LIVE_SYMBOLS,
+    NSE_15_SYMBOLS, RISK_PER_TRADE_INR, WHAT_IS_NEW, settings, validate_configuration,
 )
 from db import DatabaseManager
 from news import NewsService
@@ -109,7 +109,7 @@ def persist_account(account: AccountState) -> None:
 
 def trade_row(result) -> dict:
     plan = result.trade.plan
-    return {"id": f"{result.account}_{result.symbol}_{int(time.time() * 1000)}", "status": "OPEN", "symbol": result.symbol, "market": "NSE", "account": result.account, "strategy": plan.strategy, "type": plan.side, "entry": plan.entry, "sl": plan.stop_loss, "tp": plan.take_profit, "qty": result.trade.quantity, "risk_per_unit": plan.risk_per_unit, "planned_risk": result.trade.planned_risk, "signal_ts": plan.signal_timestamp.isoformat(), "opened_at": now().isoformat()}
+    return {"id": f"{result.account}_{result.symbol}_{int(time.time() * 1000)}", "status": "OPEN", "symbol": result.symbol, "market": LIVE_ASSET_MAP.get(result.symbol).market if result.symbol in LIVE_ASSET_MAP else "UNKNOWN", "account": result.account, "strategy": plan.strategy, "type": plan.side, "entry": plan.entry, "sl": plan.stop_loss, "tp": plan.take_profit, "qty": result.trade.quantity, "risk_per_unit": plan.risk_per_unit, "planned_risk": result.trade.planned_risk, "signal_ts": plan.signal_timestamp.isoformat(), "opened_at": now().isoformat()}
 
 
 def record_result(result) -> None:
@@ -135,7 +135,7 @@ def run_trendpulse_cycle(*, now_at=None, send=True, period="30d"):
     for result in results:
         _record_signal(result)
         record_result(result)
-    LAST_SCAN = {"status": "COMPLETE", "at": now().isoformat(), "checked": len(NSE_15_SYMBOLS), "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results), "sent": sum(bool(r.sent) for r in results)}
+    LAST_SCAN = {"status": "COMPLETE", "at": now().isoformat(), "checked": len(LIVE_ASSETS), "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results), "sent": sum(bool(r.sent) for r in results)}
     return results
 
 
@@ -146,13 +146,16 @@ def run_sweep_cycle(*, now_at=None, send=True, period="30d"):
     for result in results:
         _record_signal(result)
         record_result(result)
-    LAST_SCAN = {"status": "COMPLETE", "at": now().isoformat(), "checked": len(NSE_15_SYMBOLS), "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results), "sent": sum(bool(r.sent) for r in results)}
+    LAST_SCAN = {"status": "COMPLETE", "at": now().isoformat(), "checked": len(LIVE_ASSETS), "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results), "sent": sum(bool(r.sent) for r in results)}
     return results
 
 
 def _price(symbol: str) -> float | None:
     try:
-        data = RUNTIME.provider.fetch(f"{symbol}.NS", period="1d", interval="1m", validate_hourly=False)
+        asset = LIVE_ASSET_MAP.get(symbol)
+        if asset is None:
+            return None
+        data = RUNTIME.provider.fetch(asset.yahoo_symbol, period="1d", interval="1m", validate_hourly=False)
         return None if data.empty else float(data.close.iloc[-1])
     except Exception:
         return None
@@ -216,9 +219,21 @@ def _backtest_payload(strategy: str, symbol: str, period: str) -> dict:
         raise ValueError("symbol must be a supported backtest asset")
     if period not in {"5d", "30d", "60d", "90d", "1y"}:
         raise ValueError("period must be one of 5d, 30d, 60d, 90d or 1y")
-    is_nse = asset["asset_type"] == "equity"
-    frame = RUNTIME.provider.fetch(asset["ticker"], period=period, interval="1h", validate_hourly=is_nse)
-    result = trendpulse_backtest(frame, account="nifty") if strategy_key == "trendpulse" else sweep_backtest(frame, account="sweep_4h")
+    live_asset = LIVE_ASSET_MAP[symbol]
+    if live_asset.market == "NSE":
+        frame = RUNTIME.fetch_symbol_1h(symbol, period=period)
+    else:
+        frame = RUNTIME.provider.fetch(
+            live_asset.yahoo_symbol,
+            period=period,
+            interval="1h",
+            validate_hourly=False,
+        )
+    result = (
+        trendpulse_backtest(frame, account="nifty")
+        if strategy_key == "trendpulse"
+        else sweep_backtest(frame, symbol=symbol, account="sweep_4h")
+    )
     daily: dict[str, dict[str, int]] = {}
     rows = []
     for item in result.signals:
@@ -243,7 +258,7 @@ def snapshot() -> dict:
         init_state()
     with LOCK:
         account_rows = [{"name": a.name, "starting_balance": a.starting_balance, "balance": a.balance, "planned_risk_used": a.planned_risk_used, "daily_trade_limit": a.daily_trade_limit, "max_daily_planned_risk": a.max_daily_planned_risk, "trades_today": a.trades_today, "remaining_trades": a.remaining_trades, "remaining_planned_risk": a.remaining_planned_risk} for a in ACCOUNTS.values()]
-        return {"version": APP_VERSION, "whats_new": list(WHAT_IS_NEW), "system": {"status": "ONLINE", "mode": "PAPER", "timezone": IST_TIMEZONE, "timeframe": "1h", "leverage": 1}, "rules": {"account_size_inr": ACCOUNT_SIZE_INR, "risk_per_trade_inr": RISK_PER_TRADE_INR, "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS), "signal_freshness_hours": 1}, "universe": {"count": 15, "symbols": list(NSE_15_SYMBOLS), "fixed": True}, "backtest_assets": [{"key": key, **asset} for key, asset in BACKTEST_ASSETS.items()], "accounts": {"count": 4, "names": list(ACCOUNT_NAMES), "data": account_rows}, "signals": list(SIGNALS[:500]), "trades": ACTIVE + HISTORY[:200], "counts": {"signals": len(SIGNALS), "trades": len(ACTIVE) + len(HISTORY), "open_trades": len(ACTIVE), "closed_trades": len(HISTORY)}, "scan": dict(LAST_SCAN), "generated_at": now().isoformat()}
+        return {"version": APP_VERSION, "whats_new": list(WHAT_IS_NEW), "system": {"status": "ONLINE", "mode": "PAPER", "timezone": IST_TIMEZONE, "timeframe": "1h", "leverage": 1}, "rules": {"account_size_inr": ACCOUNT_SIZE_INR, "risk_per_trade_inr": RISK_PER_TRADE_INR, "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS), "signal_freshness_hours": 1}, "universe": {"count": len(LIVE_ASSETS), "symbols": list(LIVE_SYMBOLS), "fixed": True, "nse_stocks": list(NSE_15_SYMBOLS)}, "backtest_assets": [{"key": key, **asset} for key, asset in BACKTEST_ASSETS.items()], "accounts": {"count": 4, "names": list(ACCOUNT_NAMES), "data": account_rows}, "signals": list(SIGNALS[:500]), "trades": ACTIVE + HISTORY[:200], "counts": {"signals": len(SIGNALS), "trades": len(ACTIVE) + len(HISTORY), "open_trades": len(ACTIVE), "closed_trades": len(HISTORY)}, "scan": dict(LAST_SCAN), "generated_at": now().isoformat()}
 
 
 def _json_response(start, payload, status="200 OK"):
@@ -322,7 +337,7 @@ def _handle_command(chat_id: str, cmd: str) -> None:
                 trend = run_trendpulse_cycle(send=True)
                 sweep = run_sweep_cycle(send=True)
                 found = sum(1 for r in trend + sweep if r.sent)
-                _send_chat(chat_id, msg_scan_result(found, len(NSE_15_SYMBOLS) * 2))
+                _send_chat(chat_id, msg_scan_result(found, len(LIVE_ASSETS) * 2))
             except Exception as exc:
                 _send_chat(chat_id, msg_error("SCAN", exc))
         elif cmd == "/balance":
@@ -389,7 +404,7 @@ def main() -> None:
         threading.Thread(target=telegram_commands, daemon=True, name="telegram").start()
         if REMINDERS is not None:
             REMINDERS.start()
-    logger.info("MULTIBOT2 %s started: NSE-15, Yahoo, 1H, 1h freshness, paper mode", APP_VERSION)
+    logger.info("MULTIBOT2 %s started: 19 assets, Yahoo, TrendPulse 1H+4H, Sweep V2, 1h freshness, paper mode", APP_VERSION)
     while True:
         time.sleep(3600)
 

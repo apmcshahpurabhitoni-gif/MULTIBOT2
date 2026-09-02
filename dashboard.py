@@ -13,6 +13,8 @@ from config import (
     ACCOUNT_SIZE_INR,
     ACCOUNT_TRADE_LIMITS,
     LEVERAGE,
+    LIVE_ASSETS,
+    LIVE_SYMBOLS,
     NSE_15_SYMBOLS,
     RISK_PER_TRADE_INR,
 )
@@ -139,8 +141,9 @@ def build_dashboard_snapshot(
         },
 
         "universe": {
-            "count": len(NSE_15_SYMBOLS),
-            "symbols": list(NSE_15_SYMBOLS),
+            "count": len(LIVE_ASSETS),
+            "symbols": list(LIVE_SYMBOLS),
+            "nse_stocks": list(NSE_15_SYMBOLS),
             "fixed": True,
         },
 

@@ -1,0 +1,23 @@
+MULTIBOT2 fixed replacement files
+================================
+Source baseline: uploaded MULTIBOT2-main.zip
+These are COMPLETE replacement files, not an installer or patch script.
+
+Canonical changes included:
+- 19 live assets: 15 NSE stocks + NIFTY + BANK NIFTY + Gold + Bitcoin.
+- TrendPulse: completed 1H signal + confirmed 4H filter.
+- Global 1H TrendPulse drops the currently forming bar.
+- Sweep V2: strict two-sided sweep, final-close classification, canonical 1H/4H schedules.
+- Sweep trade planning uses the actual detected sweep candle's high/low for the extreme SL.
+- Generic asset/Yahoo symbol handling; no forced .NS on non-NSE assets.
+- Dashboard/API universe is 19 assets.
+- Telegram/startup/dashboard version and universe labels are consistent.
+- Backtest endpoint fetches canonical NSE 1H candles and symbol-aware Sweep V2 candles.
+- Tests updated for the 19-asset contract.
+
+Validation performed:
+- Python compile check: PASS.
+- pytest suite with a temporary local yfinance stub (no network): PASS.
+- Network package installation was unavailable in this environment, so real Yahoo connectivity was not exercised here.
+
+Replace the matching paths in your repo with these files.

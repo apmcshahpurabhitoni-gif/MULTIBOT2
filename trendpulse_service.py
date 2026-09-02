@@ -6,7 +6,7 @@ from threading import RLock
 
 import pandas as pd
 
-from config import ACCOUNT_NAMES, ACCOUNT_SIZE_INR, IST_TIMEZONE, RISK_PER_TRADE_INR, SIGNAL_FRESHNESS_HOURS
+from config import ACCOUNT_NAMES, ACCOUNT_SIZE_INR, IST_TIMEZONE, LIVE_ASSET_MAP, RISK_PER_TRADE_INR, SIGNAL_FRESHNESS_HOURS
 from db import DatabaseManager
 from strategies import calc_sl_tp
 from telegram import TelegramConfig, TelegramMessage, render_signal_message, send_message, signal_rejection_message
@@ -98,12 +98,13 @@ class TrendPulseService:
             trade = PaperTrade(plan=plan, account=account_name, quantity=qty)
             age_m = int(self.runtime.gate.age_hours(signal, now=current) * 60)
             age = f"{age_m} min ago" if age_m < 60 else f"{age_m // 60} hr {age_m % 60} min ago"
+            asset = LIVE_ASSET_MAP[scan.symbol]
             message = render_signal_message(
                 signal,
-                symbol=f"{scan.symbol}.NS",
-                asset=scan.symbol,
-                market="NSE",
-                timeframe="1H",
+                symbol=asset.symbol,
+                asset=asset.label,
+                market=asset.market,
+                timeframe=asset.trendpulse_signal_timeframe,
                 entry=entry,
                 stop_loss=sl,
                 take_profit=tp,

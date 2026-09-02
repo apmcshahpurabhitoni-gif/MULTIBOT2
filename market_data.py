@@ -13,6 +13,7 @@ from config import (
     NSE_MARKET_CLOSE,
     NSE_MARKET_OPEN,
     NSE_15_SYMBOLS,
+    LIVE_ASSET_MAP,
 )
 from yahoo_provider import YahooProvider
 
@@ -237,22 +238,19 @@ def validate_symbol(
 
 
 def get_required_symbols() -> tuple[str, ...]:
-    """Return the frozen MULTIBOT2 NSE-15 universe."""
-
-    return NSE_15_SYMBOLS
+    """Return the frozen 19-asset live universe."""
+    return tuple(LIVE_ASSET_MAP)
 
 
 def yahoo_symbol(symbol: str) -> str:
-    """Convert an NSE symbol into its Yahoo Finance symbol."""
-
+    """Return the canonical Yahoo Finance ticker for any live asset."""
     symbol = validate_symbol(symbol)
-
-    if symbol not in NSE_15_SYMBOLS:
+    asset = LIVE_ASSET_MAP.get(symbol)
+    if asset is None:
         raise MarketDataError(
-            f"Symbol is outside the fixed NSE-15 universe: {symbol}"
+            f"Symbol is outside the fixed 19-asset universe: {symbol}"
         )
-
-    return f"{symbol}{YAHOO_NSE_SUFFIX}"
+    return asset.yahoo_symbol
 
 
 def _session_minute_mask(

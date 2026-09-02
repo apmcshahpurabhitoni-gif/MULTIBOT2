@@ -9,6 +9,7 @@ from typing import Callable
 import pandas as pd
 from config import ACCOUNT_SIZE_INR, ACCOUNT_TRADE_LIMITS, RISK_PER_TRADE_INR
 from strategies import StrategySignal, derive_4h_from_1h, sweep_v2, trendpulse_from_frames
+from sweep_engine import build_closed_candles
 @dataclass(frozen=True)
 class BacktestSignal:
     signal: StrategySignal
@@ -54,8 +55,32 @@ def run_signal_backtest(candles:pd.DataFrame,evaluator:Callable[[pd.Series,pd.Se
         results.append(BacktestSignal(signal,current.name))
     taken,risk=_apply_limit(results,account)
     return BacktestResult(strategy_name,ACCOUNT_SIZE_INR,tuple(results),taken,risk,account)
-def sweep_backtest(candles:pd.DataFrame,*,account:str="sweep_4h")->BacktestResult:
-    return run_signal_backtest(candles,lambda previous,current:sweep_v2(previous,current,timestamp=current.name),strategy_name="Sweep V2",account=account)
+def sweep_backtest(candles: pd.DataFrame, *, symbol: str | None = None, account: str = "sweep_4h") -> BacktestResult:
+    _validate_input(candles)
+    frame = candles.sort_index()
+    if frame.index.has_duplicates:
+        raise ValueError("Backtest candles contain duplicate timestamps")
+
+    if symbol:
+        canonical = build_closed_candles(
+            frame,
+            symbol.strip().upper(),
+            now=frame.index[-1] + pd.Timedelta(days=2),
+        )[0]
+        frame = canonical
+
+    results = []
+    for i in range(1, len(frame)):
+        current = frame.iloc[i]
+        signal = sweep_v2(
+            frame.iloc[i - 1],
+            current,
+            timestamp=current.name,
+        )
+        results.append(BacktestSignal(signal, current.name))
+
+    taken, risk = _apply_limit(results, account)
+    return BacktestResult("Sweep V2", ACCOUNT_SIZE_INR, tuple(results), taken, risk, account)
 def trendpulse_backtest(candles_1h:pd.DataFrame,*,account:str="nifty")->BacktestResult:
     _validate_input(candles_1h); frame=candles_1h.sort_index()
     if frame.index.has_duplicates: raise ValueError("Backtest candles contain duplicate timestamps")

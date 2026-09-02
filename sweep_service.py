@@ -181,6 +181,11 @@ class SweepService:
         send=True,
         account_name=DEFAULT_ACCOUNT,
     ):
+        if isinstance(asset, str):
+            normalized = asset.strip().upper()
+            if normalized not in LIVE_ASSET_MAP:
+                raise ValueError(f"Unknown live asset: {normalized}")
+            asset = LIVE_ASSET_MAP[normalized]
         current = self._now(now)
 
         if signal.signal not in (
@@ -255,13 +260,27 @@ class SweepService:
                     account_name,
                 )
 
-            candle = candles_1h.iloc[-1]
+            sweep_result = detect_sweep(
+                candles_1h,
+                asset.symbol,
+                current,
+            )
+            if sweep_result is not None:
+                signal_high = float(sweep_result.current["high"])
+                signal_low = float(sweep_result.current["low"])
+            else:
+                # Direct dispatch remains source-compatible for tests/tools that
+                # already supplied a validated directional sweep. The live scan
+                # path always reaches this branch only after detect_sweep().
+                candle = candles_1h.iloc[-1]
+                signal_high = float(candle.high)
+                signal_low = float(candle.low)
 
             plan = make_sweep_trade_plan(
                 signal,
                 entry=float(current_price),
-                signal_high=float(candle.high),
-                signal_low=float(candle.low),
+                signal_high=signal_high,
+                signal_low=signal_low,
             )
 
             if plan is None:

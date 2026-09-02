@@ -145,10 +145,19 @@ class TrendPulseRuntime:
                 f"Symbol is outside live universe: {normalized}"
             )
 
+        current = self._current(now)
         one = self.fetch_symbol_1h(
             normalized,
             period=period,
         )
+
+        asset = LIVE_ASSET_MAP[normalized]
+        # Yahoo global 1H candles are interval-start stamped. Never evaluate
+        # the currently forming bar; NSE canonical candles are close-stamped
+        # by build_nse_hourly_candles and are already complete.
+        if asset.market != "NSE" and not one.empty:
+            complete_mask = one.index + pd.Timedelta(hours=1) <= current
+            one = one.loc[complete_mask].copy()
 
         four = self._build_4h(one)
 
@@ -157,8 +166,6 @@ class TrendPulseRuntime:
             four,
             completed_only=True,
         )
-
-        current = self._current(now)
 
         if signal.signal not in ("BUY", "SELL"):
             return TrendPulseScanResult(
