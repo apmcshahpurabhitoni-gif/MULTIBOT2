@@ -1,64 +1,349 @@
 "use strict";
 
 /* MULTIBOT2 dashboard — presentation only. */
-const CONFIG = Object.freeze({apiUrl: window.DASHBOARD_API_URL || "/api/dashboard", timezone: "Asia/Kolkata", refreshMs: 30000, freshnessMs: 3600000});
-const DEFAULT_UNIVERSE = ["RELIANCE","BHARTIARTL","HDFCBANK","ICICIBANK","SBIN","TCS","BAJFINANCE","LT","LICI","SUNPHARMA","HINDUNILVR","INFY","TITAN","MARUTI","KOTAKBANK"];
-const state = {data:null,lastUpdate:null,activePage:"overview",expanded:new Set()};
-const $ = id => document.getElementById(id);
-const $$ = selector => Array.from(document.querySelectorAll(selector));
+const CONFIG = Object.freeze({
+    apiUrl: window.DASHBOARD_API_URL || "/api/dashboard",
+    timezone: "Asia/Kolkata",
+    refreshMs: 30000,
+});
 
-function escapeHtml(value){return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
-function number(value,digits=2){const n=Number(value);return Number.isFinite(n)?n.toLocaleString("en-IN",{minimumFractionDigits:digits,maximumFractionDigits:digits}):"—";}
-function inr(value){const n=Number(value);return Number.isFinite(n)?`₹${n.toLocaleString("en-IN",{minimumFractionDigits:0,maximumFractionDigits:2})}`:"—";}
-function price(value){return number(value,2);}
-function timestamp(value){if(!value)return "—";const d=new Date(value);if(Number.isNaN(d.getTime()))return "—";return new Intl.DateTimeFormat("en-IN",{timeZone:CONFIG.timezone,day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(d);}
-function clock(){return new Intl.DateTimeFormat("en-IN",{timeZone:CONFIG.timezone,hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date());}
-function ageLabel(value){if(!value)return {label:"UNKNOWN",cls:"stale",minutes:null};const ms=Date.now()-new Date(value).getTime();if(!Number.isFinite(ms)||ms<0)return {label:"INVALID",cls:"stale",minutes:null};const minutes=Math.floor(ms/60000);return {label:ms<=CONFIG.freshnessMs?"FRESH":"STALE",cls:ms<=CONFIG.freshnessMs?"fresh":"stale",minutes};}
-function ageText(value){const a=ageLabel(value);if(a.minutes===null)return "Unavailable";if(a.minutes<60)return `${a.minutes} min ago`;return `${Math.floor(a.minutes/60)} hr ${a.minutes%60} min ago`;}
-function direction(signal){const s=String(signal||"NO_SIGNAL").toUpperCase();if(s==="BUY")return {text:"BUY",icon:"🟢",cls:"buy"};if(s==="SELL")return {text:"SELL",icon:"🔴",cls:"sell"};if(s==="NEUTRAL")return {text:"NEUTRAL",icon:"⚪",cls:"neutral"};return {text:"NO SIGNAL",icon:"·",cls:"neutral"};}
-function keyFor(prefix,item,index){const raw=item?.id||item?.signal_key||item?.timestamp||item?.plan?.signal_timestamp||`${index}`;return `${prefix}:${raw}:${item?.symbol||item?.plan?.strategy||"item"}`;}
-function expandButton(key,label){const open=state.expanded.has(key);return `<button class="expand-button" type="button" data-expand="${escapeHtml(key)}" aria-expanded="${open}" aria-label="${open?"Collapse":"Expand"} ${escapeHtml(label)}">${open?"⌃":"⌄"}</button>`;}
+const DEFAULT_UNIVERSE = [
+    "RELIANCE", "BHARTIARTL", "HDFCBANK", "ICICIBANK", "SBIN",
+    "TCS", "BAJFINANCE", "LT", "LICI", "SUNPHARMA", "HINDUNILVR",
+    "INFY", "TITAN", "MARUTI", "KOTAKBANK",
+];
 
-function signalCard(signal,index){
-    const key=keyFor("signal",signal,index), d=direction(signal.signal), age=ageLabel(signal.timestamp), symbol=signal.symbol||signal.asset||"Unknown asset", open=state.expanded.has(key);
-    const details=open?`<div class="expand-content"><div class="detail-grid"><div><span>Strategy</span><b>${escapeHtml(signal.strategy||"—")}</b></div><div><span>Direction</span><b>${d.icon} ${d.text}</b></div><div><span>Timeframe</span><b>${escapeHtml(signal.timeframe||"1H")}</b></div><div><span>Freshness</span><b class="${age.cls}">${age.label}</b></div><div><span>Candle closed</span><b>${escapeHtml(timestamp(signal.timestamp))}</b></div><div><span>Age</span><b>${escapeHtml(ageText(signal.timestamp))}</b></div></div><div class="reason"><span>Strategy reason</span><p>${escapeHtml(signal.reason||"No reason supplied by runtime.")}</p></div></div>`:"";
-    return `<article class="signal-card ${d.cls} ${open?"expanded":""}"><div class="card-main" data-expand="${escapeHtml(key)}"><div class="signal-leading"><span class="direction-icon">${d.icon}</span><div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(signal.strategy||"Strategy")} · ${escapeHtml(signal.timeframe||"1H")}</small></div></div><div class="card-state"><span class="freshness ${age.cls}">${age.label}</span>${expandButton(key,symbol)}</div></div>${details}</article>`;
+const state = {
+    data: null,
+    lastUpdate: null,
+    activePage: "overview",
+    expanded: new Set(),
+};
+
+const $ = (id) => document.getElementById(id);
+const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 }
 
-function tradeCard(trade,index){
-    const key=keyFor("trade",trade,index), plan=trade.plan||trade, side=String(plan.side||trade.type||"").toUpperCase(), d=direction(side), open=state.expanded.has(key), status=String(trade.status||"OPEN").toUpperCase(), symbol=trade.symbol||plan.symbol||"Paper trade", pnl=trade.pnl;
-    const riskPerUnit=Number(plan.risk_per_unit||Math.abs(Number(plan.entry)-Number(plan.stop_loss??trade.sl))), qty=Number(plan.quantity??trade.qty??0);
-    const details=open?`<div class="expand-content"><div class="detail-grid"><div><span>Strategy</span><b>${escapeHtml(plan.strategy||trade.strategy||"—")}</b></div><div><span>Account</span><b>${escapeHtml(String(trade.account||"nifty").toUpperCase())}</b></div><div><span>Entry</span><b>${price(plan.entry)}</b></div><div><span>Stop Loss</span><b class="negative">${price(plan.stop_loss??trade.sl)}</b></div><div><span>Take Profit</span><b class="positive">${price(plan.take_profit??trade.tp)}</b></div><div><span>Quantity</span><b>${number(qty,4)}</b></div><div><span>Planned risk</span><b>${inr(riskPerUnit*qty)}</b></div><div><span>Signal candle</span><b>${escapeHtml(timestamp(plan.signal_timestamp||trade.signal_ts))}</b></div>${status==="CLOSED"?`<div><span>Exit</span><b>${price(trade.exit_price)}</b></div><div><span>P/L</span><b class="${Number(pnl)>=0?"positive":"negative"}">${inr(pnl)}</b></div><div><span>Exit reason</span><b>${escapeHtml(trade.exit_reason||trade.result||"—")}</b></div><div><span>Closed</span><b>${escapeHtml(timestamp(trade.closed_at||trade.exit_timestamp))}</b></div>`:""}</div></div>`:"";
-    return `<article class="trade-card ${d.cls} ${open?"expanded":""}"><div class="card-main" data-expand="${escapeHtml(key)}"><div class="signal-leading"><span class="direction-icon">${d.icon}</span><div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(plan.strategy||trade.strategy||"Trade")} · ${escapeHtml(side||"—")}</small></div></div><div class="card-state"><span class="trade-status ${status.toLowerCase()}">${status}</span>${expandButton(key,symbol)}</div></div>${details}</article>`;
+function number(value, digits = 2) {
+    const n = Number(value);
+    return Number.isFinite(n)
+        ? n.toLocaleString("en-IN", {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+        })
+        : "—";
 }
-function empty(message,icon="·"){return `<div class="empty-state"><span>${icon}</span><strong>${escapeHtml(message)}</strong><small>There is nothing to display in the current snapshot.</small></div>`;}
 
-function renderOverview(){
-    const data=state.data||{},signals=Array.isArray(data.signals)?data.signals:[],trades=Array.isArray(data.trades)?data.trades:[],open=trades.filter(t=>String(t.status||"").toUpperCase()==="OPEN"),system=data.system||{},online=String(system.status||"").toUpperCase()==="ONLINE";
-    $("overviewSystem").textContent=system.status||"WAITING";$("overviewSignalCount").textContent=signals.length;$("overviewTradeCount").textContent=open.length;$("overviewUpdated").textContent=state.lastUpdate?timestamp(state.lastUpdate):"—";
-    $("heroStatus").textContent=online?"System is online":"System is waiting";$("heroText").textContent=online?`Authoritative state received at ${timestamp(data.generated_at||state.lastUpdate)}. Paper execution remains enabled.`:"Waiting for the runtime dashboard API.";
-    $("overviewSignals").innerHTML=signals.length?signals.slice(0,5).map(signalCard).join(""):empty("No signal records","◇");$("overviewTrades").innerHTML=open.length?open.slice(0,5).map(tradeCard).join(""):empty("No open paper trades","◈");
+function inr(value) {
+    const n = Number(value);
+    return Number.isFinite(n)
+        ? `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+        : "—";
 }
-function renderTrades(){const trades=Array.isArray(state.data?.trades)?state.data.trades:[],open=trades.filter(t=>String(t.status||"").toUpperCase()==="OPEN"),closed=trades.filter(t=>String(t.status||"").toUpperCase()==="CLOSED");$("tradesOpenCount").textContent=open.length;$("tradesClosedCount").textContent=closed.length;$("tradesList").innerHTML=open.length?open.map(tradeCard).join(""):empty("No open paper trades","◈");}
-function renderSignals(){const signals=Array.isArray(state.data?.signals)?state.data.signals:[];$("signalsList").innerHTML=signals.length?signals.map(signalCard).join(""):empty("No signals in the current snapshot","◇");}
-function renderHistory(){const trades=Array.isArray(state.data?.trades)?state.data.trades:[],closed=trades.filter(t=>String(t.status||"").toUpperCase()==="CLOSED");$("historyList").innerHTML=closed.length?closed.map(tradeCard).join(""):empty("No completed trades","◷");}
-function renderNews(){const news=Array.isArray(state.data?.news)?state.data.news:[];$("newsList").innerHTML=news.length?news.map(item=>`<article class="news-item"><div><span>${escapeHtml(item.source||"MARKET")}</span><strong>${escapeHtml(item.title||"Market update")}</strong></div><small>${escapeHtml(timestamp(item.timestamp||item.published_at))}</small></article>`).join(""):empty("No news supplied by runtime","◉");}
-function renderTools(){
-    const data=state.data||{}, universe=Array.isArray(data.universe?.symbols)&&data.universe.symbols.length?data.universe.symbols:DEFAULT_UNIVERSE;
-    $("candleSchedule").innerHTML=["10:15","11:15","12:15","13:15","14:15","15:15"].map((t,i)=>`<span><b>${t}</b><small>${i===0?"First close":i===5?"Final close":"Hourly close"}</small></span>`).join("");
-    $("universeGrid").innerHTML=universe.map(s=>`<span>${escapeHtml(s)}</span>`).join("");
-    const accounts=Array.isArray(data.accounts?.data)?data.accounts.data:[];
-    $("accountsGrid").innerHTML=accounts.length?accounts.map(a=>`<article><strong>${escapeHtml(String(a.name||"").replaceAll("_"," ").toUpperCase())}</strong><span>${inr(a.balance)} · ${Number(a.trades_today||0)}/${Number(a.daily_trade_limit||0)} trades</span><small>${inr(a.remaining_planned_risk)} planned risk remaining</small></article>`).join(""):`<article><strong>4 accounts</strong><span>macro 20 · nifty 5 · ny_session 3 · sweep_4h 3</span></article>`;
-    const generated=data.generated_at||state.lastUpdate;$("diagnostics").innerHTML=`<div><span>API</span><b>Connected</b></div><div><span>Provider</span><b>Yahoo Finance</b></div><div><span>Timezone</span><b>Asia/Kolkata</b></div><div><span>Snapshot</span><b>${escapeHtml(timestamp(generated))}</b></div>`;
+
+function price(value) {
+    return number(value, 2);
 }
-function renderAll(){renderOverview();renderTrades();renderSignals();renderHistory();renderNews();renderTools();updateStatus(true);}
-function updateStatus(connected){const status=connected?String(state.data?.system?.status||"ONLINE").toUpperCase():"OFFLINE";$("systemStatus").textContent=status;$("systemStatusBadge").classList.toggle("offline",!connected);$("connectionBanner").hidden=connected;if(!connected)$("connectionBanner").textContent="⚠ Dashboard data is temporarily unavailable. The trading runtime is not changed by this page.";}
-async function loadDashboard(){try{const response=await fetch(`${CONFIG.apiUrl}${CONFIG.apiUrl.includes("?")?"&":"?"}_=${Date.now()}`,{cache:"no-store"});if(!response.ok)throw new Error(`HTTP ${response.status}`);state.data=await response.json();state.lastUpdate=new Date().toISOString();renderAll();}catch(error){updateStatus(false);if(!state.data){$("heroStatus").textContent="Dashboard unavailable";$("heroText").textContent="Unable to load the authoritative dashboard snapshot. Retry when the service is available.";$("overviewSignals").innerHTML=empty("Waiting for dashboard data","⚠");$("overviewTrades").innerHTML=empty("Waiting for dashboard data","⚠");}console.warn("MULTIBOT2 dashboard fetch failed",error);}}
-function navigate(page){const target=$(`page-${page}`);if(!target)return;state.activePage=page;$$('.page').forEach(p=>p.classList.toggle("active",p===target));$$('.nav-button').forEach(b=>b.classList.toggle("active",b.dataset.page===page));history.replaceState(null,"",`#${page}`);window.scrollTo({top:0,behavior:"smooth"});}
-function applyTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem("mavis-theme",theme);}
-function toggleTheme(){applyTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");}
-function restorePreferences(){const theme=localStorage.getItem("mavis-theme"),style=localStorage.getItem("mavis-style"),accent=localStorage.getItem("mavis-accent");if(theme==="dark"||theme==="light")applyTheme(theme);if(style==="modern"||style==="neo")document.documentElement.dataset.style=style;if(["emerald","blue","violet","rose","amber"].includes(accent))document.documentElement.dataset.accent=accent;}
-function handleExpand(key){if(state.expanded.has(key))state.expanded.delete(key);else state.expanded.add(key);renderAll();}
-function bindEvents(){document.addEventListener("click",event=>{const expand=event.target.closest("[data-expand]");if(expand&&!expand.classList.contains("expand-button")){handleExpand(expand.dataset.expand);return;}const button=event.target.closest(".expand-button");if(button){event.stopPropagation();handleExpand(button.dataset.expand);return;}const nav=event.target.closest("[data-page], [data-page-link]");if(nav){event.preventDefault();navigate(nav.dataset.page||nav.dataset.pageLink);}});$("themeToggle").addEventListener("click",toggleTheme);$("refreshButton").addEventListener("click",loadDashboard);window.addEventListener("hashchange",()=>navigate(location.hash.slice(1)||"overview"));}
-function startClock(){$("marketClock").textContent=clock();setInterval(()=>$("marketClock").textContent=clock(),1000);}
-restorePreferences();bindEvents();startClock();navigate(location.hash.slice(1)||"overview");loadDashboard();setInterval(loadDashboard,CONFIG.refreshMs);
+
+function timestamp(value) {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "—";
+    return new Intl.DateTimeFormat("en-IN", {
+        timeZone: CONFIG.timezone,
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).format(d);
+}
+
+function clock() {
+    return new Intl.DateTimeFormat("en-IN", {
+        timeZone: CONFIG.timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    }).format(new Date());
+}
+
+function suppliedFreshness(signal) {
+    const status = String(signal?.freshness || "UNKNOWN").toUpperCase();
+    if (status === "FRESH") return { label: "FRESH", cls: "fresh" };
+    if (status === "STALE") return { label: "STALE", cls: "stale" };
+    return { label: status || "UNKNOWN", cls: "stale" };
+}
+
+function suppliedAgeText(signal) {
+    const minutes = Number(signal?.age_minutes);
+    if (!Number.isFinite(minutes) || minutes < 0) return "Unavailable";
+    if (minutes < 60) return `${Math.floor(minutes)} min ago`;
+    return `${Math.floor(minutes / 60)} hr ${Math.floor(minutes % 60)} min ago`;
+}
+
+function direction(signal) {
+    const value = String(signal || "NO_SIGNAL").toUpperCase();
+    if (value === "BUY") return { text: "BUY", icon: "🟢", cls: "buy" };
+    if (value === "SELL") return { text: "SELL", icon: "🔴", cls: "sell" };
+    if (value === "NEUTRAL") return { text: "NEUTRAL", icon: "⚪", cls: "neutral" };
+    return { text: "NO SIGNAL", icon: "·", cls: "neutral" };
+}
+
+function keyFor(prefix, item, index) {
+    const raw = item?.id || item?.signal_key || item?.timestamp || item?.plan?.signal_timestamp || `${index}`;
+    return `${prefix}:${raw}:${item?.symbol || item?.plan?.strategy || "item"}`;
+}
+
+function expandButton(key, label) {
+    const open = state.expanded.has(key);
+    return `<button class="expand-button" type="button" data-expand="${escapeHtml(key)}" aria-expanded="${open}" aria-label="${open ? "Collapse" : "Expand"} ${escapeHtml(label)}">${open ? "⌃" : "⌄"}</button>`;
+}
+
+function signalCard(signal, index) {
+    const key = keyFor("signal", signal, index);
+    const d = direction(signal.signal);
+    const freshness = suppliedFreshness(signal);
+    const symbol = signal.symbol || signal.asset || "Unknown asset";
+    const timeframe = signal.timeframe || (signal.strategy === "Sweep V2" ? "4H" : "1H");
+    const open = state.expanded.has(key);
+    const details = open
+        ? `<div class="expand-content"><div class="detail-grid">
+            <div><span>Strategy</span><b>${escapeHtml(signal.strategy || "—")}</b></div>
+            <div><span>Direction</span><b>${d.icon} ${d.text}</b></div>
+            <div><span>Timeframe</span><b>${escapeHtml(timeframe)}</b></div>
+            <div><span>Freshness</span><b class="${freshness.cls}">${freshness.label}</b></div>
+            <div><span>Candle closed</span><b>${escapeHtml(timestamp(signal.timestamp))}</b></div>
+            <div><span>Age</span><b>${escapeHtml(suppliedAgeText(signal))}</b></div>
+        </div><div class="reason"><span>Strategy reason</span><p>${escapeHtml(signal.reason || "No reason supplied by runtime.")}</p></div></div>`
+        : "";
+
+    return `<article class="signal-card ${d.cls} ${open ? "expanded" : ""}">
+        <div class="card-main" data-expand="${escapeHtml(key)}">
+            <div class="signal-leading">
+                <span class="direction-icon">${d.icon}</span>
+                <div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(signal.strategy || "Strategy")} · ${escapeHtml(timeframe)}</small></div>
+            </div>
+            <div class="card-state"><span class="freshness ${freshness.cls}">${freshness.label}</span>${expandButton(key, symbol)}</div>
+        </div>${details}
+    </article>`;
+}
+
+function tradeCard(trade, index) {
+    const key = keyFor("trade", trade, index);
+    const plan = trade.plan || trade;
+    const side = String(plan.side || trade.type || "").toUpperCase();
+    const d = direction(side);
+    const open = state.expanded.has(key);
+    const status = String(trade.status || "OPEN").toUpperCase();
+    const symbol = trade.symbol || plan.symbol || "Paper trade";
+    const qty = plan.quantity ?? trade.qty;
+    const plannedRisk = plan.planned_risk ?? trade.planned_risk;
+    const pnl = trade.pnl;
+
+    const details = open
+        ? `<div class="expand-content"><div class="detail-grid">
+            <div><span>Strategy</span><b>${escapeHtml(plan.strategy || trade.strategy || "—")}</b></div>
+            <div><span>Account</span><b>${escapeHtml(String(trade.account || "nifty").toUpperCase())}</b></div>
+            <div><span>Entry</span><b>${price(plan.entry)}</b></div>
+            <div><span>Stop Loss</span><b class="negative">${price(plan.stop_loss ?? trade.sl)}</b></div>
+            <div><span>Take Profit</span><b class="positive">${price(plan.take_profit ?? trade.tp)}</b></div>
+            <div><span>Quantity</span><b>${number(qty, 4)}</b></div>
+            <div><span>Planned risk</span><b>${inr(plannedRisk)}</b></div>
+            <div><span>Signal candle</span><b>${escapeHtml(timestamp(plan.signal_timestamp || trade.signal_ts))}</b></div>
+            ${status === "CLOSED" ? `<div><span>Exit</span><b>${price(trade.exit_price)}</b></div><div><span>P/L</span><b class="${Number(pnl) >= 0 ? "positive" : "negative"}">${inr(pnl)}</b></div><div><span>Exit reason</span><b>${escapeHtml(trade.exit_reason || trade.result || "—")}</b></div><div><span>Closed</span><b>${escapeHtml(timestamp(trade.closed_at || trade.exit_timestamp))}</b></div>` : ""}
+        </div></div>`
+        : "";
+
+    return `<article class="trade-card ${d.cls} ${open ? "expanded" : ""}">
+        <div class="card-main" data-expand="${escapeHtml(key)}">
+            <div class="signal-leading">
+                <span class="direction-icon">${d.icon}</span>
+                <div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(plan.strategy || trade.strategy || "Trade")} · ${escapeHtml(side || "—")}</small></div>
+            </div>
+            <div class="card-state"><span class="trade-status ${status.toLowerCase()}">${status}</span>${expandButton(key, symbol)}</div>
+        </div>${details}
+    </article>`;
+}
+
+function empty(message, icon = "·") {
+    return `<div class="empty-state"><span>${icon}</span><strong>${escapeHtml(message)}</strong><small>There is nothing to display in the current snapshot.</small></div>`;
+}
+
+function renderOverview() {
+    const data = state.data || {};
+    const signals = Array.isArray(data.signals) ? data.signals : [];
+    const trades = Array.isArray(data.trades) ? data.trades : [];
+    const open = trades.filter((t) => String(t.status || "").toUpperCase() === "OPEN");
+    const system = data.system || {};
+    const online = String(system.status || "").toUpperCase() === "ONLINE";
+
+    $("overviewSystem").textContent = system.status || "WAITING";
+    $("overviewSignalCount").textContent = signals.length;
+    $("overviewTradeCount").textContent = open.length;
+    $("overviewUpdated").textContent = state.lastUpdate ? timestamp(state.lastUpdate) : "—";
+    $("heroStatus").textContent = online ? "System is online" : "System is waiting";
+    $("heroText").textContent = online
+        ? `Authoritative state received at ${timestamp(data.generated_at || state.lastUpdate)}. Paper execution remains enabled.`
+        : "Waiting for the runtime dashboard API.";
+    $("overviewSignals").innerHTML = signals.length ? signals.slice(0, 5).map(signalCard).join("") : empty("No signal records", "◇");
+    $("overviewTrades").innerHTML = open.length ? open.slice(0, 5).map(tradeCard).join("") : empty("No open paper trades", "◈");
+}
+
+function renderTrades() {
+    const trades = Array.isArray(state.data?.trades) ? state.data.trades : [];
+    const open = trades.filter((t) => String(t.status || "").toUpperCase() === "OPEN");
+    const closed = trades.filter((t) => String(t.status || "").toUpperCase() === "CLOSED");
+    $("tradesOpenCount").textContent = open.length;
+    $("tradesClosedCount").textContent = closed.length;
+    $("tradesList").innerHTML = open.length ? open.map(tradeCard).join("") : empty("No open paper trades", "◈");
+}
+
+function renderSignals() {
+    const signals = Array.isArray(state.data?.signals) ? state.data.signals : [];
+    $("signalsList").innerHTML = signals.length ? signals.map(signalCard).join("") : empty("No signals in the current snapshot", "◇");
+}
+
+function renderHistory() {
+    const trades = Array.isArray(state.data?.trades) ? state.data.trades : [];
+    const closed = trades.filter((t) => String(t.status || "").toUpperCase() === "CLOSED");
+    $("historyList").innerHTML = closed.length ? closed.map(tradeCard).join("") : empty("No completed trades", "◷");
+}
+
+function renderNews() {
+    const news = Array.isArray(state.data?.news) ? state.data.news : [];
+    $("newsList").innerHTML = news.length
+        ? news.map((item) => `<article class="news-item"><div><span>${escapeHtml(item.source || "MARKET")}</span><strong>${escapeHtml(item.title || "Market update")}</strong></div><small>${escapeHtml(timestamp(item.timestamp || item.published_at))}</small></article>`).join("")
+        : empty("No news supplied by runtime", "◉");
+}
+
+function renderTools() {
+    const data = state.data || {};
+    const universe = Array.isArray(data.universe?.symbols) && data.universe.symbols.length ? data.universe.symbols : DEFAULT_UNIVERSE;
+    $("candleSchedule").innerHTML = ["10:15", "11:15", "12:15", "13:15", "14:15", "15:15"]
+        .map((t, i) => `<span><b>${t}</b><small>${i === 0 ? "First close" : i === 5 ? "Final close" : "Hourly close"}</small></span>`).join("");
+    $("universeGrid").innerHTML = universe.map((s) => `<span>${escapeHtml(s)}</span>`).join("");
+    const accounts = Array.isArray(data.accounts?.data) ? data.accounts.data : [];
+    $("accountsGrid").innerHTML = accounts.length
+        ? accounts.map((a) => `<article><strong>${escapeHtml(String(a.name || "").replaceAll("_", " ").toUpperCase())}</strong><span>${inr(a.balance)} · ${Number(a.trades_today || 0)}/${Number(a.daily_trade_limit || 0)} trades</span><small>${inr(a.remaining_planned_risk)} planned risk remaining</small></article>`).join("")
+        : `<article><strong>4 accounts</strong><span>macro 20 · nifty 5 · ny_session 3 · sweep_4h 3</span></article>`;
+    const generated = data.generated_at || state.lastUpdate;
+    $("diagnostics").innerHTML = `<div><span>API</span><b>Connected</b></div><div><span>Provider</span><b>Yahoo Finance</b></div><div><span>Timezone</span><b>Asia/Kolkata</b></div><div><span>Snapshot</span><b>${escapeHtml(timestamp(generated))}</b></div>`;
+}
+
+function renderAll() {
+    renderOverview();
+    renderTrades();
+    renderSignals();
+    renderHistory();
+    renderNews();
+    renderTools();
+    updateStatus(true);
+}
+
+function updateStatus(connected) {
+    const status = connected ? String(state.data?.system?.status || "ONLINE").toUpperCase() : "OFFLINE";
+    $("systemStatus").textContent = status;
+    $("systemStatusBadge").classList.toggle("offline", !connected);
+    $("connectionBanner").hidden = connected;
+    if (!connected) $("connectionBanner").textContent = "⚠ Dashboard data is temporarily unavailable. The trading runtime is not changed by this page.";
+}
+
+async function loadDashboard() {
+    try {
+        const response = await fetch(`${CONFIG.apiUrl}${CONFIG.apiUrl.includes("?") ? "&" : "?"}_=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        state.data = await response.json();
+        state.lastUpdate = new Date().toISOString();
+        renderAll();
+    } catch (error) {
+        updateStatus(false);
+        if (!state.data) {
+            $("heroStatus").textContent = "Dashboard unavailable";
+            $("heroText").textContent = "Unable to load the authoritative dashboard snapshot. Retry when the service is available.";
+            $("overviewSignals").innerHTML = empty("Waiting for dashboard data", "⚠");
+            $("overviewTrades").innerHTML = empty("Waiting for dashboard data", "⚠");
+        }
+        console.warn("MULTIBOT2 dashboard fetch failed", error);
+    }
+}
+
+function navigate(page) {
+    const target = $(`page-${page}`);
+    if (!target) return;
+    state.activePage = page;
+    $$(".page").forEach((p) => p.classList.toggle("active", p === target));
+    $$(".nav-button").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
+    history.replaceState(null, "", `#${page}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("mavis-theme", theme);
+}
+
+function toggleTheme() {
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
+
+function restorePreferences() {
+    const theme = localStorage.getItem("mavis-theme");
+    const style = localStorage.getItem("mavis-style");
+    const accent = localStorage.getItem("mavis-accent");
+    if (theme === "dark" || theme === "light") applyTheme(theme);
+    if (style === "modern" || style === "neo") document.documentElement.dataset.style = style;
+    if (["emerald", "blue", "violet", "rose", "amber"].includes(accent)) document.documentElement.dataset.accent = accent;
+}
+
+function handleExpand(key) {
+    if (state.expanded.has(key)) state.expanded.delete(key);
+    else state.expanded.add(key);
+    renderAll();
+}
+
+function bindEvents() {
+    document.addEventListener("click", (event) => {
+        const expand = event.target.closest("[data-expand]");
+        if (expand && !expand.classList.contains("expand-button")) {
+            handleExpand(expand.dataset.expand);
+            return;
+        }
+        const button = event.target.closest(".expand-button");
+        if (button) {
+            event.stopPropagation();
+            handleExpand(button.dataset.expand);
+            return;
+        }
+        const nav = event.target.closest("[data-page], [data-page-link]");
+        if (nav) {
+            event.preventDefault();
+            navigate(nav.dataset.page || nav.dataset.pageLink);
+        }
+    });
+    $("themeToggle").addEventListener("click", toggleTheme);
+    $("refreshButton").addEventListener("click", loadDashboard);
+    window.addEventListener("hashchange", () => navigate(location.hash.slice(1) || "overview"));
+}
+
+function startClock() {
+    $("marketClock").textContent = clock();
+    setInterval(() => $("marketClock").textContent = clock(), 1000);
+}
+
+restorePreferences();
+bindEvents();
+startClock();
+navigate(location.hash.slice(1) || "overview");
+loadDashboard();
+setInterval(loadDashboard, CONFIG.refreshMs);
