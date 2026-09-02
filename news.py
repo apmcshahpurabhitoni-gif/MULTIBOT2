@@ -18,7 +18,7 @@ IMPACTS = ("High", "Medium", "Low", "Holiday")
 
 
 class CalendarService:
-    """Fetch Forex Factory data at most once per IST day and reuse it."""
+    """Fetch a Forex Factory feed at most once per IST day and reuse it."""
 
     def __init__(self, path: str | None = None) -> None:
         self.store = CalendarStore(path)
@@ -60,20 +60,7 @@ class CalendarService:
                 impact = "Low"
             currency = str(item.get("country") or "").strip().upper()
             title = str(item.get("title") or "Economic event").strip()
-            events.append({
-                "id": f"{raw_date}|{currency}|{title}",
-                "date": local_dt.date().isoformat(),
-                "time": local_dt.strftime("%H:%M"),
-                "datetime": local_dt.isoformat(),
-                "currency": currency,
-                "impact": impact,
-                "title": title,
-                "actual": str(item.get("actual") or "").strip(),
-                "forecast": str(item.get("forecast") or "").strip(),
-                "previous": str(item.get("previous") or "").strip(),
-                "source": "Forex Factory",
-                "url": FOREX_FACTORY_CALENDAR,
-            })
+            events.append({"id": f"{raw_date}|{currency}|{title}", "date": local_dt.date().isoformat(), "time": local_dt.strftime("%H:%M"), "datetime": local_dt.isoformat(), "currency": currency, "impact": impact, "title": title, "actual": str(item.get("actual") or "").strip(), "forecast": str(item.get("forecast") or "").strip(), "previous": str(item.get("previous") or "").strip(), "source": "Forex Factory", "url": FOREX_FACTORY_CALENDAR})
         return sorted(events, key=lambda item: item["datetime"])
 
     def _load_feed(self, feed_key: str, feed_url: str) -> tuple[list[dict], str, str]:
@@ -81,73 +68,50 @@ class CalendarService:
         if cached is not None:
             return cached, fetched_at or "", "CACHED"
 
+        # A failed first attempt is also cached for the day. This prevents UI refreshes
+        # and Telegram commands from repeatedly triggering the same Forex Factory 429.
+        attempt = self.store.load_attempt_for_today(feed_key)
+        if attempt:
+            attempted_at, error = attempt
+            stale, stale_at = self.store.load_latest(feed_key)
+            if stale is not None:
+                return stale, stale_at or attempted_at, f"STALE_CACHE: {error}"
+            raise RuntimeError(f"Forex Factory feed unavailable today: {error}")
+
         try:
-            req = urllib.request.Request(
-                feed_url,
-                headers={
-                    "User-Agent": "Mavis-MULTIBOT2/1.1 economic-calendar",
-                    "Accept": "application/json,text/plain;q=0.9,*/*;q=0.8",
-                },
-            )
+            req = urllib.request.Request(feed_url, headers={"User-Agent": "Mavis-MULTIBOT2/1.1 economic-calendar", "Accept": "application/json,text/plain;q=0.9,*/*;q=0.8"})
             with urllib.request.urlopen(req, timeout=10) as response:
                 raw = response.read().decode("utf-8", errors="replace")
             events = self._normalise(json.loads(raw))
             fetched_at = self.store.save_today(feed_key, events)
             return events, fetched_at, "FETCHED_TODAY"
         except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            attempted_at = self.store.save_attempt(feed_key, error)
             stale, fetched_at = self.store.load_latest(feed_key)
             if stale is not None:
-                return stale, fetched_at or "", f"STALE_CACHE: {type(exc).__name__}: {exc}"
-            raise RuntimeError(f"Forex Factory feed unavailable: {type(exc).__name__}: {exc}") from exc
+                return stale, fetched_at or attempted_at, f"STALE_CACHE: {error}"
+            raise RuntimeError(f"Forex Factory feed unavailable: {error}") from exc
 
     def get(self, *, target_date: str | None = None, impacts: set[str] | None = None, force: bool = False) -> dict:
-        """Return calendar data. force only refreshes the UI; it never bypasses the daily network cache."""
+        """Return calendar data. force only refreshes the UI; it never bypasses the daily cache."""
         del force
         target = datetime.now(IST).date() if not target_date else date.fromisoformat(target_date)
         feed = self._feed_url(target)
         if feed is None:
-            return {
-                "status": "OUT_OF_RANGE",
-                "source": "Forex Factory",
-                "date": target.isoformat(),
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "items": [],
-                "counts": {impact.lower(): 0 for impact in IMPACTS},
-                "message": "Forex Factory supplies a rolling current/next week feed; choose a date in that range.",
-                "calendar_url": FOREX_FACTORY_CALENDAR,
-            }
-
+            return {"status": "OUT_OF_RANGE", "source": "Forex Factory", "date": target.isoformat(), "fetched_at": datetime.now(timezone.utc).isoformat(), "items": [], "counts": {impact.lower(): 0 for impact in IMPACTS}, "message": "Forex Factory supplies a rolling current/next week feed; choose a date in that range.", "calendar_url": FOREX_FACTORY_CALENDAR}
         feed_key, feed_url = feed
         try:
             events, fetched_at, load_status = self._load_feed(feed_key, feed_url)
         except Exception as exc:
-            return {
-                "status": "OFFLINE",
-                "source": "Forex Factory",
-                "date": target.isoformat(),
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "items": [],
-                "counts": {impact.lower(): 0 for impact in IMPACTS},
-                "message": str(exc),
-                "calendar_url": FOREX_FACTORY_CALENDAR,
-            }
-
+            return {"status": "OFFLINE", "source": "Forex Factory", "date": target.isoformat(), "fetched_at": datetime.now(timezone.utc).isoformat(), "items": [], "counts": {impact.lower(): 0 for impact in IMPACTS}, "message": str(exc), "calendar_url": FOREX_FACTORY_CALENDAR}
         selected = [event for event in events if event["date"] == target.isoformat()]
+        all_counts = {impact.lower(): sum(event["impact"] == impact for event in selected) for impact in IMPACTS}
         selected_impacts = {item.title() for item in (impacts or {"All"})}
         if "All" not in selected_impacts:
             selected = [event for event in selected if event["impact"] in selected_impacts]
-        counts = {impact.lower(): sum(event["impact"] == impact for event in selected) for impact in IMPACTS}
         status = "ONLINE" if load_status == "FETCHED_TODAY" else ("CACHED" if load_status == "CACHED" else "STALE_CACHE")
-        return {
-            "status": status,
-            "source": "Forex Factory",
-            "date": target.isoformat(),
-            "fetched_at": fetched_at,
-            "items": selected,
-            "counts": counts,
-            "message": f"{len(selected)} events for {target.strftime('%d %b %Y')} · {load_status}",
-            "calendar_url": f"{FOREX_FACTORY_CALENDAR}?day={target.strftime('%b').lower()}{target.day}.{target.year}",
-        }
+        return {"status": status, "source": "Forex Factory", "date": target.isoformat(), "fetched_at": fetched_at, "items": selected, "counts": all_counts, "message": f"{len(selected)} events for {target.strftime('%d %b %Y')} · {load_status}", "calendar_url": f"{FOREX_FACTORY_CALENDAR}?day={target.strftime('%b').lower()}{target.day}.{target.year}"}
 
     def refresh(self, *, target_date: str | None = None, impacts: set[str] | None = None) -> dict:
         with self._lock:
@@ -155,5 +119,4 @@ class CalendarService:
 
 
 NewsService = CalendarService
-
 __all__ = ["CalendarService", "NewsService", "IMPACTS"]
