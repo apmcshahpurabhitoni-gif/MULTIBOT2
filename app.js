@@ -1,349 +1,53 @@
 "use strict";
 
-/* MULTIBOT2 dashboard — presentation only. */
-const CONFIG = Object.freeze({
-    apiUrl: window.DASHBOARD_API_URL || "/api/dashboard",
-    timezone: "Asia/Kolkata",
-    refreshMs: 30000,
-});
-
-const DEFAULT_UNIVERSE = [
-    "RELIANCE", "BHARTIARTL", "HDFCBANK", "ICICIBANK", "SBIN",
-    "TCS", "BAJFINANCE", "LT", "LICI", "SUNPHARMA", "HINDUNILVR",
-    "INFY", "TITAN", "MARUTI", "KOTAKBANK",
-];
-
-const state = {
-    data: null,
-    lastUpdate: null,
-    activePage: "overview",
-    expanded: new Set(),
-};
-
-const $ = (id) => document.getElementById(id);
-const $$ = (selector) => Array.from(document.querySelectorAll(selector));
-
-function escapeHtml(value) {
-    return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-}
-
-function number(value, digits = 2) {
-    const n = Number(value);
-    return Number.isFinite(n)
-        ? n.toLocaleString("en-IN", {
-            minimumFractionDigits: digits,
-            maximumFractionDigits: digits,
-        })
-        : "—";
-}
-
-function inr(value) {
-    const n = Number(value);
-    return Number.isFinite(n)
-        ? `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
-        : "—";
-}
-
-function price(value) {
-    return number(value, 2);
-}
-
-function timestamp(value) {
-    if (!value) return "—";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "—";
-    return new Intl.DateTimeFormat("en-IN", {
-        timeZone: CONFIG.timezone,
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-    }).format(d);
-}
-
-function clock() {
-    return new Intl.DateTimeFormat("en-IN", {
-        timeZone: CONFIG.timezone,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-    }).format(new Date());
-}
-
-function suppliedFreshness(signal) {
-    const status = String(signal?.freshness || "UNKNOWN").toUpperCase();
-    if (status === "FRESH") return { label: "FRESH", cls: "fresh" };
-    if (status === "STALE") return { label: "STALE", cls: "stale" };
-    return { label: status || "UNKNOWN", cls: "stale" };
-}
-
-function suppliedAgeText(signal) {
-    const minutes = Number(signal?.age_minutes);
-    if (!Number.isFinite(minutes) || minutes < 0) return "Unavailable";
-    if (minutes < 60) return `${Math.floor(minutes)} min ago`;
-    return `${Math.floor(minutes / 60)} hr ${Math.floor(minutes % 60)} min ago`;
-}
-
-function direction(signal) {
-    const value = String(signal || "NO_SIGNAL").toUpperCase();
-    if (value === "BUY") return { text: "BUY", icon: "🟢", cls: "buy" };
-    if (value === "SELL") return { text: "SELL", icon: "🔴", cls: "sell" };
-    if (value === "NEUTRAL") return { text: "NEUTRAL", icon: "⚪", cls: "neutral" };
-    return { text: "NO SIGNAL", icon: "·", cls: "neutral" };
-}
-
-function keyFor(prefix, item, index) {
-    const raw = item?.id || item?.signal_key || item?.timestamp || item?.plan?.signal_timestamp || `${index}`;
-    return `${prefix}:${raw}:${item?.symbol || item?.plan?.strategy || "item"}`;
-}
-
-function expandButton(key, label) {
-    const open = state.expanded.has(key);
-    return `<button class="expand-button" type="button" data-expand="${escapeHtml(key)}" aria-expanded="${open}" aria-label="${open ? "Collapse" : "Expand"} ${escapeHtml(label)}">${open ? "⌃" : "⌄"}</button>`;
-}
-
-function signalCard(signal, index) {
-    const key = keyFor("signal", signal, index);
-    const d = direction(signal.signal);
-    const freshness = suppliedFreshness(signal);
-    const symbol = signal.symbol || signal.asset || "Unknown asset";
-    const timeframe = signal.timeframe || (signal.strategy === "Sweep V2" ? "4H" : "1H");
-    const open = state.expanded.has(key);
-    const details = open
-        ? `<div class="expand-content"><div class="detail-grid">
-            <div><span>Strategy</span><b>${escapeHtml(signal.strategy || "—")}</b></div>
-            <div><span>Direction</span><b>${d.icon} ${d.text}</b></div>
-            <div><span>Timeframe</span><b>${escapeHtml(timeframe)}</b></div>
-            <div><span>Freshness</span><b class="${freshness.cls}">${freshness.label}</b></div>
-            <div><span>Candle closed</span><b>${escapeHtml(timestamp(signal.timestamp))}</b></div>
-            <div><span>Age</span><b>${escapeHtml(suppliedAgeText(signal))}</b></div>
-        </div><div class="reason"><span>Strategy reason</span><p>${escapeHtml(signal.reason || "No reason supplied by runtime.")}</p></div></div>`
-        : "";
-
-    return `<article class="signal-card ${d.cls} ${open ? "expanded" : ""}">
-        <div class="card-main" data-expand="${escapeHtml(key)}">
-            <div class="signal-leading">
-                <span class="direction-icon">${d.icon}</span>
-                <div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(signal.strategy || "Strategy")} · ${escapeHtml(timeframe)}</small></div>
-            </div>
-            <div class="card-state"><span class="freshness ${freshness.cls}">${freshness.label}</span>${expandButton(key, symbol)}</div>
-        </div>${details}
-    </article>`;
-}
-
-function tradeCard(trade, index) {
-    const key = keyFor("trade", trade, index);
-    const plan = trade.plan || trade;
-    const side = String(plan.side || trade.type || "").toUpperCase();
-    const d = direction(side);
-    const open = state.expanded.has(key);
-    const status = String(trade.status || "OPEN").toUpperCase();
-    const symbol = trade.symbol || plan.symbol || "Paper trade";
-    const qty = plan.quantity ?? trade.qty;
-    const plannedRisk = plan.planned_risk ?? trade.planned_risk;
-    const pnl = trade.pnl;
-
-    const details = open
-        ? `<div class="expand-content"><div class="detail-grid">
-            <div><span>Strategy</span><b>${escapeHtml(plan.strategy || trade.strategy || "—")}</b></div>
-            <div><span>Account</span><b>${escapeHtml(String(trade.account || "nifty").toUpperCase())}</b></div>
-            <div><span>Entry</span><b>${price(plan.entry)}</b></div>
-            <div><span>Stop Loss</span><b class="negative">${price(plan.stop_loss ?? trade.sl)}</b></div>
-            <div><span>Take Profit</span><b class="positive">${price(plan.take_profit ?? trade.tp)}</b></div>
-            <div><span>Quantity</span><b>${number(qty, 4)}</b></div>
-            <div><span>Planned risk</span><b>${inr(plannedRisk)}</b></div>
-            <div><span>Signal candle</span><b>${escapeHtml(timestamp(plan.signal_timestamp || trade.signal_ts))}</b></div>
-            ${status === "CLOSED" ? `<div><span>Exit</span><b>${price(trade.exit_price)}</b></div><div><span>P/L</span><b class="${Number(pnl) >= 0 ? "positive" : "negative"}">${inr(pnl)}</b></div><div><span>Exit reason</span><b>${escapeHtml(trade.exit_reason || trade.result || "—")}</b></div><div><span>Closed</span><b>${escapeHtml(timestamp(trade.closed_at || trade.exit_timestamp))}</b></div>` : ""}
-        </div></div>`
-        : "";
-
-    return `<article class="trade-card ${d.cls} ${open ? "expanded" : ""}">
-        <div class="card-main" data-expand="${escapeHtml(key)}">
-            <div class="signal-leading">
-                <span class="direction-icon">${d.icon}</span>
-                <div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(plan.strategy || trade.strategy || "Trade")} · ${escapeHtml(side || "—")}</small></div>
-            </div>
-            <div class="card-state"><span class="trade-status ${status.toLowerCase()}">${status}</span>${expandButton(key, symbol)}</div>
-        </div>${details}
-    </article>`;
-}
-
-function empty(message, icon = "·") {
-    return `<div class="empty-state"><span>${icon}</span><strong>${escapeHtml(message)}</strong><small>There is nothing to display in the current snapshot.</small></div>`;
-}
-
-function renderOverview() {
-    const data = state.data || {};
-    const signals = Array.isArray(data.signals) ? data.signals : [];
-    const trades = Array.isArray(data.trades) ? data.trades : [];
-    const open = trades.filter((t) => String(t.status || "").toUpperCase() === "OPEN");
-    const system = data.system || {};
-    const online = String(system.status || "").toUpperCase() === "ONLINE";
-
-    $("overviewSystem").textContent = system.status || "WAITING";
-    $("overviewSignalCount").textContent = signals.length;
-    $("overviewTradeCount").textContent = open.length;
-    $("overviewUpdated").textContent = state.lastUpdate ? timestamp(state.lastUpdate) : "—";
-    $("heroStatus").textContent = online ? "System is online" : "System is waiting";
-    $("heroText").textContent = online
-        ? `Authoritative state received at ${timestamp(data.generated_at || state.lastUpdate)}. Paper execution remains enabled.`
-        : "Waiting for the runtime dashboard API.";
-    $("overviewSignals").innerHTML = signals.length ? signals.slice(0, 5).map(signalCard).join("") : empty("No signal records", "◇");
-    $("overviewTrades").innerHTML = open.length ? open.slice(0, 5).map(tradeCard).join("") : empty("No open paper trades", "◈");
-}
-
-function renderTrades() {
-    const trades = Array.isArray(state.data?.trades) ? state.data.trades : [];
-    const open = trades.filter((t) => String(t.status || "").toUpperCase() === "OPEN");
-    const closed = trades.filter((t) => String(t.status || "").toUpperCase() === "CLOSED");
-    $("tradesOpenCount").textContent = open.length;
-    $("tradesClosedCount").textContent = closed.length;
-    $("tradesList").innerHTML = open.length ? open.map(tradeCard).join("") : empty("No open paper trades", "◈");
-}
-
-function renderSignals() {
-    const signals = Array.isArray(state.data?.signals) ? state.data.signals : [];
-    $("signalsList").innerHTML = signals.length ? signals.map(signalCard).join("") : empty("No signals in the current snapshot", "◇");
-}
-
-function renderHistory() {
-    const trades = Array.isArray(state.data?.trades) ? state.data.trades : [];
-    const closed = trades.filter((t) => String(t.status || "").toUpperCase() === "CLOSED");
-    $("historyList").innerHTML = closed.length ? closed.map(tradeCard).join("") : empty("No completed trades", "◷");
-}
-
-function renderNews() {
-    const news = Array.isArray(state.data?.news) ? state.data.news : [];
-    $("newsList").innerHTML = news.length
-        ? news.map((item) => `<article class="news-item"><div><span>${escapeHtml(item.source || "MARKET")}</span><strong>${escapeHtml(item.title || "Market update")}</strong></div><small>${escapeHtml(timestamp(item.timestamp || item.published_at))}</small></article>`).join("")
-        : empty("No news supplied by runtime", "◉");
-}
-
-function renderTools() {
-    const data = state.data || {};
-    const universe = Array.isArray(data.universe?.symbols) && data.universe.symbols.length ? data.universe.symbols : DEFAULT_UNIVERSE;
-    $("candleSchedule").innerHTML = ["10:15", "11:15", "12:15", "13:15", "14:15", "15:15"]
-        .map((t, i) => `<span><b>${t}</b><small>${i === 0 ? "First close" : i === 5 ? "Final close" : "Hourly close"}</small></span>`).join("");
-    $("universeGrid").innerHTML = universe.map((s) => `<span>${escapeHtml(s)}</span>`).join("");
-    const accounts = Array.isArray(data.accounts?.data) ? data.accounts.data : [];
-    $("accountsGrid").innerHTML = accounts.length
-        ? accounts.map((a) => `<article><strong>${escapeHtml(String(a.name || "").replaceAll("_", " ").toUpperCase())}</strong><span>${inr(a.balance)} · ${Number(a.trades_today || 0)}/${Number(a.daily_trade_limit || 0)} trades</span><small>${inr(a.remaining_planned_risk)} planned risk remaining</small></article>`).join("")
-        : `<article><strong>4 accounts</strong><span>macro 20 · nifty 5 · ny_session 3 · sweep_4h 3</span></article>`;
-    const generated = data.generated_at || state.lastUpdate;
-    $("diagnostics").innerHTML = `<div><span>API</span><b>Connected</b></div><div><span>Provider</span><b>Yahoo Finance</b></div><div><span>Timezone</span><b>Asia/Kolkata</b></div><div><span>Snapshot</span><b>${escapeHtml(timestamp(generated))}</b></div>`;
-}
-
-function renderAll() {
-    renderOverview();
-    renderTrades();
-    renderSignals();
-    renderHistory();
-    renderNews();
-    renderTools();
-    updateStatus(true);
-}
-
-function updateStatus(connected) {
-    const status = connected ? String(state.data?.system?.status || "ONLINE").toUpperCase() : "OFFLINE";
-    $("systemStatus").textContent = status;
-    $("systemStatusBadge").classList.toggle("offline", !connected);
-    $("connectionBanner").hidden = connected;
-    if (!connected) $("connectionBanner").textContent = "⚠ Dashboard data is temporarily unavailable. The trading runtime is not changed by this page.";
-}
-
-async function loadDashboard() {
-    try {
-        const response = await fetch(`${CONFIG.apiUrl}${CONFIG.apiUrl.includes("?") ? "&" : "?"}_=${Date.now()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        state.data = await response.json();
-        state.lastUpdate = new Date().toISOString();
-        renderAll();
-    } catch (error) {
-        updateStatus(false);
-        if (!state.data) {
-            $("heroStatus").textContent = "Dashboard unavailable";
-            $("heroText").textContent = "Unable to load the authoritative dashboard snapshot. Retry when the service is available.";
-            $("overviewSignals").innerHTML = empty("Waiting for dashboard data", "⚠");
-            $("overviewTrades").innerHTML = empty("Waiting for dashboard data", "⚠");
-        }
-        console.warn("MULTIBOT2 dashboard fetch failed", error);
-    }
-}
-
-function navigate(page) {
-    const target = $(`page-${page}`);
-    if (!target) return;
-    state.activePage = page;
-    $$(".page").forEach((p) => p.classList.toggle("active", p === target));
-    $$(".nav-button").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
-    history.replaceState(null, "", `#${page}`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("mavis-theme", theme);
-}
-
-function toggleTheme() {
-    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
-}
-
-function restorePreferences() {
-    const theme = localStorage.getItem("mavis-theme");
-    const style = localStorage.getItem("mavis-style");
-    const accent = localStorage.getItem("mavis-accent");
-    if (theme === "dark" || theme === "light") applyTheme(theme);
-    if (style === "modern" || style === "neo") document.documentElement.dataset.style = style;
-    if (["emerald", "blue", "violet", "rose", "amber"].includes(accent)) document.documentElement.dataset.accent = accent;
-}
-
-function handleExpand(key) {
-    if (state.expanded.has(key)) state.expanded.delete(key);
-    else state.expanded.add(key);
-    renderAll();
-}
-
-function bindEvents() {
-    document.addEventListener("click", (event) => {
-        const expand = event.target.closest("[data-expand]");
-        if (expand && !expand.classList.contains("expand-button")) {
-            handleExpand(expand.dataset.expand);
-            return;
-        }
-        const button = event.target.closest(".expand-button");
-        if (button) {
-            event.stopPropagation();
-            handleExpand(button.dataset.expand);
-            return;
-        }
-        const nav = event.target.closest("[data-page], [data-page-link]");
-        if (nav) {
-            event.preventDefault();
-            navigate(nav.dataset.page || nav.dataset.pageLink);
-        }
-    });
-    $("themeToggle").addEventListener("click", toggleTheme);
-    $("refreshButton").addEventListener("click", loadDashboard);
-    window.addEventListener("hashchange", () => navigate(location.hash.slice(1) || "overview"));
-}
-
-function startClock() {
-    $("marketClock").textContent = clock();
-    setInterval(() => $("marketClock").textContent = clock(), 1000);
-}
-
-restorePreferences();
-bindEvents();
-startClock();
-navigate(location.hash.slice(1) || "overview");
-loadDashboard();
-setInterval(loadDashboard, CONFIG.refreshMs);
+/* MULTIBOT2 dashboard — presentation only. The server owns all trading decisions. */
+const CONFIG = Object.freeze({apiUrl: window.DASHBOARD_API_URL || "/api/dashboard",timezone: "Asia/Kolkata",refreshMs: 30000,freshnessMs: 3600000});
+const DEFAULT_UNIVERSE = ["RELIANCE","BHARTIARTL","HDFCBANK","ICICIBANK","SBIN","TCS","BAJFINANCE","LT","LICI","SUNPHARMA","HINDUNILVR","INFY","TITAN","MARUTI","KOTAKBANK"];
+const state = {data:null,lastUpdate:null,activePage:"overview",expanded:new Set(),signalFilter:"all",backtest:null};
+const $ = id => document.getElementById(id); const $$ = selector => Array.from(document.querySelectorAll(selector));
+function escapeHtml(value){return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
+function number(value,digits=2){const n=Number(value);return Number.isFinite(n)?n.toLocaleString("en-IN",{minimumFractionDigits:digits,maximumFractionDigits:digits}):"—";}
+function inr(value){const n=Number(value);return Number.isFinite(n)?`₹${n.toLocaleString("en-IN",{minimumFractionDigits:0,maximumFractionDigits:2})}`:"—";}
+function price(value){return number(value,2);}
+function timestamp(value){if(!value)return "—";const d=new Date(value);if(Number.isNaN(d.getTime()))return "—";return new Intl.DateTimeFormat("en-IN",{timeZone:CONFIG.timezone,day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}).format(d);}
+function dateLabel(value){if(!value)return "Unknown date";const d=new Date(value);if(Number.isNaN(d.getTime()))return "Unknown date";return new Intl.DateTimeFormat("en-IN",{timeZone:CONFIG.timezone,day:"2-digit",month:"short",year:"numeric"}).format(d);}
+function dateKey(value){if(!value)return "unknown";const d=new Date(value);if(Number.isNaN(d.getTime()))return "unknown";const p=new Intl.DateTimeFormat("en-CA",{timeZone:CONFIG.timezone,year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d);const m=Object.fromEntries(p.map(x=>[x.type,x.value]));return `${m.year}-${m.month}-${m.day}`;}
+function clock(){return new Intl.DateTimeFormat("en-IN",{timeZone:CONFIG.timezone,hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(new Date());}
+function ageLabel(value){if(!value)return {label:"UNKNOWN",cls:"stale",minutes:null};const ms=Date.now()-new Date(value).getTime();if(!Number.isFinite(ms)||ms<0)return {label:"INVALID",cls:"stale",minutes:null};const minutes=Math.floor(ms/60000);return {label:ms<=CONFIG.freshnessMs?"FRESH":"STALE",cls:ms<=CONFIG.freshnessMs?"fresh":"stale",minutes};}
+function ageText(value){const a=ageLabel(value);if(a.minutes===null)return "Unavailable";if(a.minutes<60)return `${a.minutes} min ago`;return `${Math.floor(a.minutes/60)} hr ${a.minutes%60} min ago`;}
+function direction(signal){const s=String(signal||"NO_SIGNAL").toUpperCase();if(s==="BUY")return {text:"BUY",icon:"🟢",cls:"buy"};if(s==="SELL")return {text:"SELL",icon:"🔴",cls:"sell"};if(s==="NEUTRAL")return {text:"NEUTRAL",icon:"⚪",cls:"neutral"};return {text:"NO SIGNAL",icon:"·",cls:"neutral"};}
+function keyFor(prefix,item,index){const raw=item?.id||item?.signal_key||item?.timestamp||item?.plan?.signal_timestamp||`${index}`;return `${prefix}:${raw}:${item?.symbol||item?.plan?.strategy||"item"}`;}
+function expandButton(key,label){const open=state.expanded.has(key);return `<button class="expand-button" type="button" data-expand="${escapeHtml(key)}" aria-expanded="${open}" aria-label="${open?"Collapse":"Expand"} ${escapeHtml(label)}">${open?"⌃":"⌄"}</button>`;}
+function signalCard(signal,index){const key=keyFor("signal",signal,index),d=direction(signal.signal),age=ageLabel(signal.timestamp),symbol=signal.symbol||signal.asset||"Unknown asset",open=state.expanded.has(key),timeframe=signal.timeframe||(signal.strategy==="Sweep V2"?"4H":"1H");const details=open?`<div class="expand-content"><div class="detail-grid"><div><span>Strategy</span><b>${escapeHtml(signal.strategy||"—")}</b></div><div><span>Direction</span><b>${d.icon} ${d.text}</b></div><div><span>Timeframe</span><b>${escapeHtml(timeframe)}</b></div><div><span>Freshness</span><b class="${age.cls}">${age.label}</b></div><div><span>Candle closed</span><b>${escapeHtml(timestamp(signal.timestamp))}</b></div><div><span>Age</span><b>${escapeHtml(ageText(signal.timestamp))}</b></div><div><span>Send count</span><b>${number(signal.send_count,0)} / 2</b></div><div><span>First sent</span><b>${escapeHtml(timestamp(signal.first_sent_at))}</b></div></div><div class="reason"><span>Strategy reason</span><p>${escapeHtml(signal.reason||"No reason supplied by runtime.")}</p></div></div>`:"";return `<article class="signal-card ${d.cls} ${open?"expanded":""}"><div class="card-main" data-expand="${escapeHtml(key)}"><div class="signal-leading"><span class="direction-icon">${d.icon}</span><div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(signal.strategy||"Strategy")} · ${escapeHtml(timeframe)} · ${escapeHtml(dateLabel(signal.timestamp))}</small></div></div><div class="card-state"><span class="freshness ${age.cls}">${age.label}</span>${expandButton(key,symbol)}</div></div>${details}</article>`;}
+function tradeCard(trade,index){const key=keyFor("trade",trade,index),plan=trade.plan||trade,side=String(plan.side||trade.type||"").toUpperCase(),d=direction(side),open=state.expanded.has(key),status=String(trade.status||"OPEN").toUpperCase(),symbol=trade.symbol||plan.symbol||"Paper trade",qty=plan.quantity??trade.qty,plannedRisk=plan.planned_risk??trade.planned_risk,pnl=trade.pnl;const details=open?`<div class="expand-content"><div class="detail-grid"><div><span>Strategy</span><b>${escapeHtml(plan.strategy||trade.strategy||"—")}</b></div><div><span>Account</span><b>${escapeHtml(String(trade.account||"nifty").toUpperCase())}</b></div><div><span>Entry</span><b>${price(plan.entry??trade.entry)}</b></div><div><span>Stop Loss</span><b class="negative">${price(plan.stop_loss??trade.sl)}</b></div><div><span>Take Profit</span><b class="positive">${price(plan.take_profit??trade.tp)}</b></div><div><span>Quantity</span><b>${number(qty,4)}</b></div><div><span>Planned risk</span><b>${inr(plannedRisk)}</b></div><div><span>Signal candle</span><b>${escapeHtml(timestamp(plan.signal_timestamp||trade.signal_ts))}</b></div>${status==="CLOSED"?`<div><span>Exit</span><b>${price(trade.exit_price)}</b></div><div><span>P/L</span><b class="${Number(pnl)>=0?"positive":"negative"}">${inr(pnl)}</b></div><div><span>Exit reason</span><b>${escapeHtml(trade.exit_reason||trade.result||"—")}</b></div><div><span>Closed</span><b>${escapeHtml(timestamp(trade.closed_at||trade.exit_timestamp))}</b></div>`:""}</div></div>`:"";return `<article class="trade-card ${d.cls} ${open?"expanded":""}"><div class="card-main" data-expand="${escapeHtml(key)}"><div class="signal-leading"><span class="direction-icon">${d.icon}</span><div><strong>${escapeHtml(symbol)}</strong><small>${escapeHtml(plan.strategy||trade.strategy||"Trade")} · ${escapeHtml(side||"—")}</small></div></div><div class="card-state"><span class="trade-status ${status.toLowerCase()}">${status}</span>${expandButton(key,symbol)}</div></div>${details}</article>`;}
+function empty(message,icon="·",detail="There is nothing to display in the current snapshot."){return `<div class="empty-state"><span>${icon}</span><strong>${escapeHtml(message)}</strong><small>${escapeHtml(detail)}</small></div>`;}
+function groupByDate(items,timeField){const groups=new Map();items.forEach(item=>{const value=item?.[timeField],key=dateKey(value);if(!groups.has(key))groups.set(key,{label:dateLabel(value),items:[]});groups.get(key).items.push(item);});return Array.from(groups.entries()).sort((a,b)=>b[0].localeCompare(a[0])).map(([,group])=>group);}
+function groupedCards(items,renderer,timeField){const groups=groupByDate(items,timeField);if(!groups.length)return "";return groups.map(group=>`<section class="date-group"><div class="date-heading"><h3>${escapeHtml(group.label)}</h3><span>${group.items.length} record${group.items.length===1?"":"s"}</span></div><div class="stack">${group.items.map(renderer).join("")}</div></section>`).join("");}
+function renderSignalChart(){const signals=Array.isArray(state.data?.signals)?state.data.signals:[],days=[],nowDate=new Date();for(let i=13;i>=0;i--){const d=new Date(nowDate);d.setDate(d.getDate()-i);days.push({key:dateKey(d),label:new Intl.DateTimeFormat("en-IN",{timeZone:CONFIG.timezone,day:"2-digit",month:"short"}).format(d),count:0});}const map=new Map(days.map(d=>[d.key,d]));signals.forEach(s=>{const row=map.get(dateKey(s.timestamp));if(row)row.count++;});const max=Math.max(1,...days.map(d=>d.count)),width=720,height=230,left=28,right=10,top=16,bottom=38,plotW=width-left-right,plotH=height-top-bottom,barW=Math.max(12,plotW/days.length*.55);const bars=days.map((d,i)=>{const x=left+i*plotW/days.length+(plotW/days.length-barW)/2,h=d.count/max*plotH,y=top+plotH-h;return `<rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(2,h).toFixed(1)}" rx="4"><title>${escapeHtml(d.label)} · ${d.count} signal${d.count===1?"":"s"}</title></rect><text class="chart-label" x="${(x+barW/2).toFixed(1)}" y="${height-14}" text-anchor="middle">${escapeHtml(d.label)}</text>`;}).join("");const svg=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Signal activity for the last 14 days"><line class="chart-axis" x1="${left}" y1="${top+plotH}" x2="${width-right}" y2="${top+plotH}"/><text class="chart-y" x="8" y="${top+plotH+4}">0</text>${bars}</svg>`;$("signalActivityChart").innerHTML=signals.length?svg:empty("No signal activity yet","◇","The graph will populate when an approved BUY or SELL is dispatched.");}
+function renderOverview(){const data=state.data||{},signals=Array.isArray(data.signals)?data.signals:[],trades=Array.isArray(data.trades)?data.trades:[],open=trades.filter(t=>String(t.status||"").toUpperCase()==="OPEN"),system=data.system||{},online=String(system.status||"").toUpperCase()==="ONLINE";$("overviewSystem").textContent=system.status||"WAITING";$("overviewSignalCount").textContent=signals.length;$("overviewTradeCount").textContent=open.length;$("overviewUpdated").textContent=state.lastUpdate?timestamp(state.lastUpdate):"—";$("heroStatus").textContent=online?"System is online":"System is waiting";$("heroText").textContent=online?`Authoritative state received at ${timestamp(data.generated_at||state.lastUpdate)}. Paper execution remains enabled.`:"Waiting for the runtime dashboard API.";$("overviewSignals").innerHTML=signals.length?signals.slice(0,5).map(signalCard).join(""):empty("No signal records","◇","No approved directional signal has been dispatched yet. Check the scan status on the Signals page.");$("overviewTrades").innerHTML=open.length?open.slice(0,5).map(tradeCard).join(""):empty("No open paper trades","◈");renderSignalChart();}
+function renderTrades(){const trades=Array.isArray(state.data?.trades)?state.data.trades:[],open=trades.filter(t=>String(t.status||"").toUpperCase()==="OPEN"),closed=trades.filter(t=>String(t.status||"").toUpperCase()==="CLOSED");$("tradesOpenCount").textContent=open.length;$("tradesClosedCount").textContent=closed.length;$("tradesList").innerHTML=open.length?open.map(tradeCard).join(""):empty("No open paper trades","◈");}
+function renderScanStatus(){const scan=state.data?.scan||{};if(String(scan.status).toUpperCase()==="COMPLETE")$("scanStatus").innerHTML=`<div><span>LAST SCAN</span><b>${escapeHtml(timestamp(scan.at))}</b></div><div><span>UNIVERSE CHECKED</span><b>${number(scan.checked,0)} assets</b></div><div><span>DIRECTIONAL</span><b>${number(scan.directional,0)}</b></div><div><span>DISPATCHED</span><b>${number(scan.sent,0)}</b></div>`;else $("scanStatus").innerHTML=`<div class="scan-warning"><span>SCAN STATUS</span><b>No completed scan recorded since runtime start.</b><small>A zero signal count is different from an unscanned universe.</small></div>`;}
+function signalMatchesFilter(signal){if(state.signalFilter==="all")return true;const t=new Date(signal.timestamp);if(Number.isNaN(t.getTime()))return false;if(state.signalFilter==="today"){const now=new Date();const key=dateKey(now),sigKey=dateKey(t);return key===sigKey;}return t>=new Date(Date.now()-7*86400000);}
+function renderSignals(){const all=Array.isArray(state.data?.signals)?state.data.signals:[],signals=all.filter(signalMatchesFilter);renderScanStatus();$("signalsList").innerHTML=signals.length?groupedCards(signals,signalCard,"timestamp"):empty("No signals for this date range","◇",all.length?"Signals exist outside the selected date filter.":"No approved directional signal has been dispatched yet.");$$('[data-signal-filter]').forEach(button=>button.classList.toggle("active",button.dataset.signalFilter===state.signalFilter));}
+function renderHistory(){const trades=Array.isArray(state.data?.trades)?state.data.trades:[],closed=trades.filter(t=>String(t.status||"").toUpperCase()==="CLOSED");$("historyList").innerHTML=closed.length?groupedCards(closed,tradeCard,"closed_at"):empty("No completed trades","◷");}
+function safeExternalUrl(value){const url=String(value||"");return /^https?:\/\//i.test(url)?url:"";}
+function renderNews(){const news=state.data?.news||{},items=Array.isArray(news.items)?news.items:[],online=String(news.status||"").toUpperCase()==="ONLINE";$("newsHealth").innerHTML=`<span class="news-dot ${online?"online":"offline"}"></span><div><b>${escapeHtml(news.source||"News feed")}</b><small>${escapeHtml(news.message||"No feed status available.")} · ${escapeHtml(timestamp(news.fetched_at))}</small></div>`;$("newsList").innerHTML=items.length?items.map(item=>{const url=safeExternalUrl(item.url);return `<article class="news-item"><div><span>${escapeHtml(item.source||"MARKET")}</span><strong>${escapeHtml(item.title||"Market update")}</strong><small>${escapeHtml(item.published_at||"")}</small></div>${url?`<a class="news-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open →</a>`:""}</article>`;}).join(""):empty(online?"No headlines returned":"News feed unavailable","◉",online?"The feed is connected but has no current headlines.":"The trading runtime is unaffected. Use Refresh news to try again.");}
+function renderTools(){const data=state.data||{},universe=Array.isArray(data.universe?.symbols)&&data.universe.symbols.length?data.universe.symbols:DEFAULT_UNIVERSE;$("candleSchedule").innerHTML=["10:15","11:15","12:15","13:15","14:15","15:15"].map((t,i)=>`<span><b>${t}</b><small>${i===0?"First close":i===5?"Final close":"Hourly close"}</small></span>`).join("");$("universeGrid").innerHTML=universe.map(s=>`<span>${escapeHtml(s)}</span>`).join("");const accounts=Array.isArray(data.accounts?.data)?data.accounts.data:[];$("accountsGrid").innerHTML=accounts.length?accounts.map(a=>`<article><strong>${escapeHtml(String(a.name||"").replaceAll("_"," ").toUpperCase())}</strong><span>${inr(a.balance)} · ${Number(a.trades_today||0)}/${Number(a.daily_trade_limit||0)} trades</span><small>${inr(a.remaining_planned_risk)} planned risk remaining</small></article>`).join(""):`<article><strong>4 accounts</strong><span>macro 20 · nifty 5 · ny_session 3 · sweep_4h 3</span></article>`;const generated=data.generated_at||state.lastUpdate;$("diagnostics").innerHTML=`<div><span>API</span><b>Connected</b></div><div><span>Provider</span><b>Yahoo Finance</b></div><div><span>Timezone</span><b>Asia/Kolkata</b></div><div><span>Snapshot</span><b>${escapeHtml(timestamp(generated))}</b></div><div><span>News</span><b>${escapeHtml(data.news?.status||"UNKNOWN")}</b></div><div><span>Last scan</span><b>${escapeHtml(timestamp(data.scan?.at))}</b></div>`;$("backtestSymbol").innerHTML=universe.map(symbol=>`<option value="${escapeHtml(symbol)}">${escapeHtml(symbol)}</option>`).join("");}
+function backtestChart(rows){if(!Array.isArray(rows)||!rows.length)return empty("No directional signals in this test","◇","The strategy returned no BUY or SELL signals for the selected period.");const max=Math.max(1,...rows.map(r=>Number(r.total||0))),width=720,height=230,left=28,right=10,top=16,bottom=38,plotW=width-left-right,plotH=height-top-bottom,slot=plotW/rows.length,barW=Math.max(10,slot*.58);const bars=rows.map((r,i)=>{const total=Number(r.total||0),buy=Number(r.buy||0),sell=Number(r.sell||0),x=left+i*slot+(slot-barW)/2,h=total/max*plotH,y=top+plotH-h;return `<rect class="backtest-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(2,h).toFixed(1)}" rx="4"><title>${escapeHtml(r.date)} · BUY ${buy} · SELL ${sell}</title></rect><text class="chart-label" x="${(x+barW/2).toFixed(1)}" y="${height-14}" text-anchor="middle">${escapeHtml(r.date)}</text>`;}).join("");return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Backtest signal activity by day"><line class="chart-axis" x1="${left}" y1="${top+plotH}" x2="${width-right}" y2="${top+plotH}"/><text class="chart-y" x="8" y="${top+plotH+4}">0</text>${bars}</svg>`;}
+function renderBacktest(){const result=state.backtest;if(!result)return;$("backtestResults").hidden=false;const metrics=[["Candles",number(result.candle_count,0)],["Signals",number(result.total_signals,0)],["BUY",number(result.buy_signals,0)],["SELL",number(result.sell_signals,0)],["Trades allowed",number(result.trades_taken,0)],["Planned risk",inr(result.planned_risk)]];$("backtestResults").innerHTML=`<div class="backtest-header"><div><b>${escapeHtml(result.strategy)} · ${escapeHtml(result.symbol)}</b><small>${escapeHtml(result.period)} · ${escapeHtml(timestamp(result.generated_at))}</small></div><span>${escapeHtml(String(result.account).toUpperCase())}</span></div><div class="metric-grid three">${metrics.map(([label,value])=>`<article class="metric-card compact"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`).join("")}</div><div class="backtest-chart-panel"><div class="chart-head"><div><strong>Signal activity</strong><small>Daily directional signals returned by the canonical strategy</small></div></div>${backtestChart(result.daily)}</div><div class="backtest-note">This backtest uses the existing deterministic strategy boundary and account trade limits. It reports signal/risk activity; it does not invent a P/L curve when the canonical backtest does not simulate exits.</div></div>`;}
+async function runBacktest(){const strategy=$("backtestStrategy").value,symbol=$("backtestSymbol").value,period=$("backtestPeriod").value,button=$("runBacktestButton");button.disabled=true;button.textContent="Running…";$("backtestStatus").textContent="Fetching historical candles and applying the canonical strategy. This can take a few seconds.";$("backtestResults").hidden=true;try{const response=await fetch(`/api/backtest?strategy=${encodeURIComponent(strategy)}&symbol=${encodeURIComponent(symbol)}&period=${encodeURIComponent(period)}`,{cache:"no-store"}),data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.error||`HTTP ${response.status}`);state.backtest=data;$("backtestStatus").textContent="Backtest complete. Results below are historical strategy output, not live execution.";renderBacktest();}catch(error){state.backtest=null;$("backtestStatus").textContent=`Backtest failed: ${error.message}`;$("backtestResults").hidden=true;}finally{button.disabled=false;button.textContent="Run backtest";}}
+function renderAll(){renderOverview();renderTrades();renderSignals();renderHistory();renderNews();renderTools();renderBacktest();updateStatus(true);syncAppearanceControls();}
+function updateStatus(connected){const status=connected?String(state.data?.system?.status||"ONLINE").toUpperCase():"OFFLINE";$("systemStatus").textContent=status;$("systemStatusBadge").classList.toggle("offline",!connected);$("connectionBanner").hidden=connected;if(!connected)$("connectionBanner").textContent="⚠ Dashboard data is temporarily unavailable. The trading runtime is not changed by this page.";}
+async function loadDashboard(){try{const response=await fetch(`${CONFIG.apiUrl}${CONFIG.apiUrl.includes("?")?"&":"?"}_=${Date.now()}`,{cache:"no-store"});if(!response.ok)throw new Error(`HTTP ${response.status}`);state.data=await response.json();state.lastUpdate=new Date().toISOString();renderAll();}catch(error){updateStatus(false);if(!state.data){$("heroStatus").textContent="Dashboard unavailable";$("heroText").textContent="Unable to load the authoritative dashboard snapshot. Retry when the service is available.";$("overviewSignals").innerHTML=empty("Waiting for dashboard data","⚠");$("overviewTrades").innerHTML=empty("Waiting for dashboard data","⚠");}console.warn("MULTIBOT2 dashboard fetch failed",error);}}
+async function refreshNews(){const button=$("newsRefreshButton");button.disabled=true;button.textContent="Refreshing…";try{const response=await fetch("/api/news?refresh=1",{cache:"no-store"}),news=await response.json();if(state.data)state.data.news=news;renderNews();}catch(error){console.warn("News refresh failed",error);}finally{button.disabled=false;button.textContent="↻ Refresh news";}}
+function navigate(page){const target=$(`page-${page}`);if(!target)return;state.activePage=page;$$('.page').forEach(p=>p.classList.toggle("active",p===target));$$('.nav-button').forEach(b=>b.classList.toggle("active",b.dataset.page===page));history.replaceState(null,"",`#${page}`);window.scrollTo({top:0,behavior:"smooth"});}
+function applyTheme(theme){document.documentElement.dataset.theme=theme;localStorage.setItem("mavis-theme",theme);syncAppearanceControls();}
+function applyStyle(style){document.documentElement.dataset.style=style;localStorage.setItem("mavis-style",style);syncAppearanceControls();}
+function toggleTheme(){applyTheme(document.documentElement.dataset.theme==="dark"?"light":"dark");}
+function toggleStyle(){applyStyle(document.documentElement.dataset.style==="neo"?"modern":"neo");}
+function syncAppearanceControls(){$$('[data-theme-choice]').forEach(b=>b.classList.toggle("active",b.dataset.themeChoice===document.documentElement.dataset.theme));$$('[data-style-choice]').forEach(b=>b.classList.toggle("active",b.dataset.styleChoice===document.documentElement.dataset.style));}
+function restorePreferences(){const theme=localStorage.getItem("mavis-theme"),style=localStorage.getItem("mavis-style");if(theme==="dark"||theme==="light")document.documentElement.dataset.theme=theme;if(style==="modern"||style==="neo")document.documentElement.dataset.style=style;syncAppearanceControls();}
+function handleExpand(key){if(state.expanded.has(key))state.expanded.delete(key);else state.expanded.add(key);renderAll();}
+function bindEvents(){document.addEventListener("click",event=>{const expand=event.target.closest("[data-expand]");if(expand&&!expand.classList.contains("expand-button")){handleExpand(expand.dataset.expand);return;}const button=event.target.closest(".expand-button");if(button){event.stopPropagation();handleExpand(button.dataset.expand);return;}const filter=event.target.closest("[data-signal-filter]");if(filter){state.signalFilter=filter.dataset.signalFilter;renderSignals();return;}const themeChoice=event.target.closest("[data-theme-choice]");if(themeChoice){applyTheme(themeChoice.dataset.themeChoice);return;}const styleChoice=event.target.closest("[data-style-choice]");if(styleChoice){applyStyle(styleChoice.dataset.styleChoice);return;}const nav=event.target.closest("[data-page], [data-page-link]");if(nav){event.preventDefault();navigate(nav.dataset.page||nav.dataset.pageLink);}});$("themeToggle").addEventListener("click",toggleTheme);$("styleToggle").addEventListener("click",toggleStyle);$("refreshButton").addEventListener("click",loadDashboard);$("newsRefreshButton").addEventListener("click",refreshNews);$("runBacktestButton").addEventListener("click",runBacktest);window.addEventListener("hashchange",()=>navigate(location.hash.slice(1)||"overview"));}
+function startClock(){$("marketClock").textContent=clock();setInterval(()=>$("marketClock").textContent=clock(),1000);}
+restorePreferences();bindEvents();startClock();navigate(location.hash.slice(1)||"overview");loadDashboard();setInterval(loadDashboard,CONFIG.refreshMs);
