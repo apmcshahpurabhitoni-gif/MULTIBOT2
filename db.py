@@ -5,7 +5,6 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any
 from urllib import error, parse, request
 
 DEFAULT_DB_PATH = os.getenv("BOT_STATE_DB_PATH", "/tmp/workspace/multibot2_state.db")
@@ -90,7 +89,10 @@ CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY,send_count INTEGE
                 trades = int(r.get("daily_trades", r.get("trades_today", 0)) or 0)
                 reset = str(r.get("last_reset_date", r.get("reset_date", "")) or "")
                 planned = float(r.get("planned_risk_used", 0) or 0)
-                c.execute("INSERT OR REPLACE INTO accounts VALUES(?,?,?,?,?,?)", (name, starting, balance, trades, planned, reset))
+                c.execute(
+                    "INSERT OR REPLACE INTO accounts VALUES(?,?,?,?,?,?)",
+                    (name, starting, balance, trades, planned, reset),
+                )
             c.commit()
 
     def _restore_trades(self):
@@ -119,15 +121,20 @@ CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY,send_count INTEGE
                         "time": r.get("time_str", r.get("time", "")) or "",
                     }
                     if status == "CLOSED":
-                        payload.update({
-                            "exit_price": float(r.get("exit_price", 0) or 0),
-                            "pnl": float(r.get("pnl", 0) or 0),
-                            "result": r.get("result", ""),
-                            "exit_reason": r.get("exit_reason", ""),
-                            "closed_at": r.get("closed_at", r.get("close_time", "")) or "",
-                        })
+                        payload.update(
+                            {
+                                "exit_price": float(r.get("exit_price", 0) or 0),
+                                "pnl": float(r.get("pnl", 0) or 0),
+                                "result": r.get("result", ""),
+                                "exit_reason": r.get("exit_reason", ""),
+                                "closed_at": r.get("closed_at", r.get("close_time", "")) or "",
+                            }
+                        )
                     updated = payload.get("closed_at") or payload.get("opened_at") or datetime.now(timezone.utc).isoformat()
-                    c.execute("INSERT OR REPLACE INTO trades VALUES(?,?,?,?)", (tid, status, json.dumps(payload, default=str), str(updated)))
+                    c.execute(
+                        "INSERT OR REPLACE INTO trades VALUES(?,?,?,?)",
+                        (tid, status, json.dumps(payload, default=str), str(updated)),
+                    )
                 c.commit()
 
     def _restore_signals(self):
@@ -165,7 +172,10 @@ CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY,send_count INTEGE
                 elif row["reset_date"] != today:
                     c.execute("UPDATE accounts SET trades_today=0,planned_risk_used=0,reset_date=? WHERE name=?", (today, name))
             c.commit()
-            rows = c.execute("SELECT * FROM accounts WHERE name IN (%s)" % ",".join("?" for _ in names), names).fetchall()
+            rows = c.execute(
+                "SELECT * FROM accounts WHERE name IN (%s)" % ",".join("?" for _ in names),
+                names,
+            ).fetchall()
         return {r["name"]: dict(r) for r in rows}
 
     def _require_supabase(self, result, operation):
@@ -174,7 +184,10 @@ CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY,send_count INTEGE
 
     def save_account(self, name, *, balance, trades_today, planned_risk_used, reset_date):
         with self._connect() as c:
-            c.execute("UPDATE accounts SET balance=?,trades_today=?,planned_risk_used=?,reset_date=? WHERE name=?", (balance, trades_today, planned_risk_used, reset_date, name))
+            c.execute(
+                "UPDATE accounts SET balance=?,trades_today=?,planned_risk_used=?,reset_date=? WHERE name=?",
+                (balance, trades_today, planned_risk_used, reset_date, name),
+            )
             c.commit()
         result = self._supabase_request(
             "POST",
@@ -255,6 +268,49 @@ CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY,send_count INTEGE
             ).fetchall()
         return [json.loads(r["payload"]) for r in rows]
 
+    def load_signal_history(self, limit=500):
+        """Return dashboard-ready signal history restored from persistent state."""
+        limit = max(1, min(int(limit), 2000))
+        with self._connect() as c:
+            rows = c.execute(
+                "SELECT * FROM signals ORDER BY COALESCE(first_sent_at,last_sent_at) DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+
+        current = datetime.now(timezone.utc)
+        history = []
+        for row in rows:
+            try:
+                metadata = json.loads(row["metadata"] or "{}")
+            except (TypeError, ValueError):
+                metadata = {}
+            timestamp = str(metadata.get("timestamp") or row["first_sent_at"] or "")
+            try:
+                signal_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                if signal_time.tzinfo is None:
+                    signal_time = signal_time.replace(tzinfo=timezone.utc)
+                age_minutes = max(0.0, (current - signal_time.astimezone(timezone.utc)).total_seconds() / 60.0)
+                freshness = "FRESH" if age_minutes <= 60 else "STALE"
+            except (TypeError, ValueError, OverflowError):
+                age_minutes = None
+                freshness = "UNKNOWN"
+            history.append(
+                {
+                    "signal_key": row["signal_key"],
+                    "strategy": metadata.get("strategy", ""),
+                    "symbol": metadata.get("symbol", ""),
+                    "signal": metadata.get("direction", ""),
+                    "timestamp": timestamp,
+                    "reason": metadata.get("reason", "Accepted directional signal"),
+                    "timeframe": metadata.get("timeframe", "1H"),
+                    "freshness": freshness,
+                    "age_minutes": age_minutes,
+                    "send_count": int(row["send_count"] or 0),
+                    "reminder_due_at": row["reminder_due_at"],
+                }
+            )
+        return history
+
     def record_signal_send(self, key, sent_at, reminder_due_at=None, message_text=None, metadata=None):
         with self._connect() as c:
             row = c.execute("SELECT send_count FROM signals WHERE signal_key=?", (key,)).fetchone()
@@ -292,39 +348,6 @@ CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY,send_count INTEGE
             row = c.execute("SELECT send_count FROM signals WHERE signal_key=?", (key,)).fetchone()
         return int(row["send_count"]) if row else 0
 
-    def load_signal_history(self, limit=500):
-        """Return durable dispatched-signal history for the dashboard.
-
-        This is intentionally separate from the send-count gate concept: the
-        dashboard reads the same durable rows but never changes their state.
-        """
-        with self._connect() as c:
-            rows = c.execute(
-                "SELECT signal_key,send_count,first_sent_at,last_sent_at,metadata FROM signals WHERE metadata IS NOT NULL AND metadata != '{}' ORDER BY COALESCE(last_sent_at,first_sent_at) DESC LIMIT ?",
-                (int(limit),),
-            ).fetchall()
-        result = []
-        for row in rows:
-            try:
-                metadata = json.loads(row["metadata"] or "{}")
-            except (TypeError, ValueError):
-                metadata = {}
-            timestamp = metadata.get("timestamp") or row["first_sent_at"] or row["last_sent_at"]
-            result.append(
-                {
-                    "signal_key": row["signal_key"],
-                    "strategy": metadata.get("strategy", "Unknown"),
-                    "symbol": metadata.get("symbol", ""),
-                    "signal": metadata.get("direction", metadata.get("signal", "")),
-                    "timestamp": timestamp,
-                    "reason": metadata.get("reason", "Dispatched by the canonical runtime."),
-                    "send_count": int(row["send_count"]),
-                    "first_sent_at": row["first_sent_at"],
-                    "last_sent_at": row["last_sent_at"],
-                }
-            )
-        return result
-
     def due_reminders(self, now_iso):
         with self._connect() as c:
             rows = c.execute(
@@ -335,7 +358,10 @@ CREATE TABLE IF NOT EXISTS signals(signal_key TEXT PRIMARY KEY,send_count INTEGE
 
     def mark_reminder_sent(self, key, sent_at):
         with self._connect() as c:
-            c.execute("UPDATE signals SET send_count=2,reminder_sent=1,last_sent_at=? WHERE signal_key=? AND send_count=1", (sent_at, key))
+            c.execute(
+                "UPDATE signals SET send_count=2,reminder_sent=1,last_sent_at=? WHERE signal_key=? AND send_count=1",
+                (sent_at, key),
+            )
             c.commit()
         result = self._supabase_request(
             "POST",
