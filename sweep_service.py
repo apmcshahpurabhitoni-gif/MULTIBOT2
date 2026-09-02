@@ -174,7 +174,9 @@ class SweepService:
             try:
                 signal, frame = self.scan_symbol(symbol, period=period)
                 if signal.signal not in ("BUY", "SELL"):
-                    out.append(self.dispatch(symbol, signal, frame, current_price=0.0, now=now, send=send))
+                    # Neutral scans are internal state, not Telegram alerts.
+                    # Reporting these 15 times on every cycle creates notification spam.
+                    out.append(self.dispatch(symbol, signal, frame, current_price=0.0, now=now, send=False))
                     continue
                 data = self.runtime.provider.fetch(
                     f"{symbol}.NS", period="1d", interval="1m", validate_hourly=False
