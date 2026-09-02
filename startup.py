@@ -11,7 +11,7 @@ import os
 from urllib import parse, request
 
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.1")
+APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.2")
 BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
@@ -51,12 +51,12 @@ def startup_message() -> str:
 
 def whats_new_message() -> str:
     return (
-        "🆕 *WHAT'S NEW — v1.0.1*\n"
+        "🆕 *WHAT'S NEW — v1.0.2*\n"
         f"{BR}\n"
         "🛠️ *FIXED*\n"
         "🚫 TrendPulse NO_SIGNAL / NEUTRAL no longer sends `SIGNAL NOT SENT`\n"
-        "🚫 Prevented the normal 15-symbol scan from generating 15 rejection messages\n"
-        "🟡 Sweep neutral results are informational and no longer treated as trade rejections\n"
+        "🚫 Normal 15-symbol scans no longer generate 15 rejection messages\n"
+        "🟡 Sweep neutral results are informational, not trade rejections\n"
         "\n"
         "➕ *ADDED / IMPROVED*\n"
         "🔎 Scheduled Sweep checking messages\n"
@@ -64,6 +64,7 @@ def whats_new_message() -> str:
         "🕯️ Original Sweep candle timing/close validation retained\n"
         "🚫 No FVG logic added\n"
         "🧭 Version/build identification on every bot restart\n"
+        "🧪 Regression test added to enforce silent non-directional TrendPulse scans\n"
         "📋 What's New now records fixes and additions per release\n"
         f"{BR}"
     )
