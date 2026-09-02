@@ -1,1149 +1,131 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-style="modern">
-
+<html lang="en" data-theme="light" data-style="modern" data-accent="emerald">
 <head>
     <meta charset="utf-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1"
-    >
-
-    <meta
-        name="theme-color"
-        content="#f5f6f3"
-    >
-
-    <title>MULTIBOT2 Trading Dashboard</title>
-
-    <link
-        rel="stylesheet"
-        href="styles.css"
-    >
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="theme-color" content="#f5f7f5">
+    <meta name="description" content="Mavis MULTIBOT2 paper-trading command center">
+    <title>Mavis · MULTIBOT2</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
-
 <div class="app">
-
-    <!-- =====================================================
-         HEADER
-         ===================================================== -->
-
     <header class="topbar">
-
-        <div class="brand">
-
-            <div class="brand-mark">
-                M
-            </div>
-
-            <div class="brand-copy">
-
-                <strong>
-                    Mavis Trading Bot
-                </strong>
-
-                <span>
-                    MULTIBOT2
-                </span>
-
-            </div>
-
+        <a class="brand" href="#overview" aria-label="Mavis home" data-page-link="overview">
+            <span class="brand-mark">M</span>
+            <span class="brand-copy"><strong>Mavis</strong><small>MULTIBOT2 · PAPER</small></span>
+        </a>
+        <div class="header-meta">
+            <span id="systemStatusBadge" class="status-badge"><i id="systemStatusDot"></i><span id="systemStatus">CONNECTING</span></span>
+            <button id="refreshButton" class="icon-button" type="button" aria-label="Refresh dashboard" title="Refresh">↻</button>
+            <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle dark mode" title="Theme">◐</button>
         </div>
-
-
-        <div class="system-status">
-
-            <span
-                id="systemStatusDot"
-                class="status-dot"
-            ></span>
-
-            <span id="systemStatus">
-                WAITING
-            </span>
-
-        </div>
-
-
-        <button
-            id="themeToggle"
-            class="icon-button"
-            type="button"
-            aria-label="Toggle dark mode"
-        >
-            ◐
-        </button>
-
     </header>
 
+    <div id="connectionBanner" class="connection-banner" hidden></div>
 
-    <!-- =====================================================
-         STYLE CONTROLS
-         ===================================================== -->
-
-    <section class="style-controls">
-
-        <button
-            type="button"
-            class="style-button active"
-            data-theme="light"
-        >
-            Light
-        </button>
-
-        <button
-            type="button"
-            class="style-button"
-            data-theme="dark"
-        >
-            Dark
-        </button>
-
-        <button
-            type="button"
-            class="style-button active"
-            data-style="modern"
-        >
-            Modern
-        </button>
-
-        <button
-            type="button"
-            class="style-button"
-            data-style="neo"
-        >
-            Neo
-        </button>
-
-    </section>
-
-
-    <!-- =====================================================
-         DESKTOP NAVIGATION
-         ===================================================== -->
-
-    <nav class="desktop-nav">
-
-        <button
-            type="button"
-            class="nav-button active"
-            data-page="overview"
-        >
-            Overview
-        </button>
-
-        <button
-            type="button"
-            class="nav-button"
-            data-page="trades"
-        >
-            Trades
-        </button>
-
-        <button
-            type="button"
-            class="nav-button"
-            data-page="signals"
-        >
-            Signals
-        </button>
-
-        <button
-            type="button"
-            class="nav-button"
-            data-page="history"
-        >
-            History
-        </button>
-
-        <button
-            type="button"
-            class="nav-button"
-            data-page="news"
-        >
-            News
-        </button>
-
-        <button
-            type="button"
-            class="nav-button"
-            data-page="tools"
-        >
-            Tools
-        </button>
-
+    <nav class="desktop-nav" aria-label="Primary navigation">
+        <button class="nav-button active" data-page="overview" type="button">⌂ <span>Overview</span></button>
+        <button class="nav-button" data-page="trades" type="button">◈ <span>Trades</span></button>
+        <button class="nav-button" data-page="signals" type="button">◆ <span>Signals</span></button>
+        <button class="nav-button" data-page="history" type="button">◷ <span>History</span></button>
+        <button class="nav-button" data-page="news" type="button">◉ <span>News</span></button>
+        <button class="nav-button" data-page="tools" type="button">⚙ <span>Tools</span></button>
     </nav>
-
-
-    <!-- =====================================================
-         MAIN
-         ===================================================== -->
 
     <main>
-
-
-        <!-- =================================================
-             OVERVIEW
-             ================================================= -->
-
-        <section
-            id="page-overview"
-            class="page active"
-        >
-
+        <section id="page-overview" class="page active" aria-labelledby="overviewTitle">
             <div class="page-heading">
-
                 <div>
-
-                    <span class="eyebrow">
-                        MULTIBOT2
-                    </span>
-
-                    <h1>
-                        Trading Overview
-                    </h1>
-
-                    <p>
-                        NSE paper-trading system
-                        · 1H
-                        · IST
-                        · 1× leverage
-                    </p>
-
+                    <span class="eyebrow">COMMAND CENTER</span>
+                    <h1 id="overviewTitle">Trading Overview</h1>
+                    <p>NSE-15 · Yahoo Finance · 1H · IST · 1× leverage · paper only</p>
                 </div>
-
-
-                <div class="market-clock">
-
-                    <span>
-                        IST
-                    </span>
-
-                    <strong id="marketClock">
-                        --
-                    </strong>
-
-                </div>
-
+                <div class="clock"><span>IST</span><strong id="marketClock">--:--:--</strong></div>
             </div>
 
-
-            <!-- TOP METRICS -->
-
-            <div class="metric-grid">
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        System
-                    </span>
-
-                    <strong
-                        id="overviewSystem"
-                        class="metric-value positive"
-                    >
-                        WAITING
-                    </strong>
-
-                </article>
-
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Signals
-                    </span>
-
-                    <strong
-                        id="overviewSignalCount"
-                        class="metric-value"
-                    >
-                        0
-                    </strong>
-
-                </article>
-
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Open Trades
-                    </span>
-
-                    <strong
-                        id="overviewTradeCount"
-                        class="metric-value"
-                    >
-                        0
-                    </strong>
-
-                </article>
-
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Last Update
-                    </span>
-
-                    <strong
-                        id="overviewUpdated"
-                        class="metric-value small"
-                    >
-                        --
-                    </strong>
-
-                </article>
-
-            </div>
-
-
-            <!-- RISK SUMMARY -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Risk Controls
-                    </h2>
-
-                    <span>
-                        Locked paper-trading rules
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <div class="metric-grid">
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Account
-                    </span>
-
-                    <strong class="metric-value">
-                        ₹1,00,000
-                    </strong>
-
-                </article>
-
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Risk / Trade
-                    </span>
-
-                    <strong class="metric-value">
-                        ₹2,000
-                    </strong>
-
-                </article>
-
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Trades / Day
-                    </span>
-
-                    <strong class="metric-value">
-                        3
-                    </strong>
-
-                </article>
-
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Leverage
-                    </span>
-
-                    <strong class="metric-value">
-                        1×
-                    </strong>
-
-                </article>
-
-            </div>
-
-
-            <!-- LATEST SIGNALS -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Latest Signals
-                    </h2>
-
-                    <span>
-                        Canonical strategy output
-                    </span>
-
-                </div>
-
-                <button
-                    type="button"
-                    class="text-button"
-                    data-page-link="signals"
-                >
-                    View all
-                </button>
-
-            </div>
-
-
-            <article
-                id="overviewSignals"
-                class="panel"
-            >
-
-                <div class="empty-state">
-                    No signals loaded.
-                </div>
-
+            <article class="hero">
+                <div class="hero-copy"><span class="hero-kicker">MAVIS TRADING ENGINE</span><h2 id="heroStatus">System is connecting</h2><p id="heroText">Loading authoritative dashboard state…</p></div>
+                <div class="hero-pills"><span>🛡 ₹2,000 risk</span><span>🇮🇳 NSE-15</span><span>⏱ 1H</span></div>
             </article>
 
-
-            <!-- OPEN TRADES -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Open Trades
-                    </h2>
-
-                    <span>
-                        Paper positions
-                    </span>
-
-                </div>
-
-                <button
-                    type="button"
-                    class="text-button"
-                    data-page-link="trades"
-                >
-                    View all
-                </button>
-
+            <div class="metric-grid four">
+                <article class="metric-card"><span>System</span><strong id="overviewSystem">—</strong><small>Runtime status</small></article>
+                <article class="metric-card"><span>Signals</span><strong id="overviewSignalCount">0</strong><small>Current snapshot</small></article>
+                <article class="metric-card"><span>Open trades</span><strong id="overviewTradeCount">0</strong><small>Paper positions</small></article>
+                <article class="metric-card"><span>Updated</span><strong id="overviewUpdated">—</strong><small>Latest snapshot</small></article>
             </div>
 
-
-            <article
-                id="overviewTrades"
-                class="panel"
-            >
-
-                <div class="empty-state">
-                    No open trades.
+            <section class="section-block">
+                <div class="section-heading"><div><span class="eyebrow">RISK CONTROL</span><h2>Locked limits</h2></div><button class="text-button" data-page-link="tools" type="button">View rules →</button></div>
+                <div class="metric-grid four" id="riskMetrics">
+                    <article class="metric-card"><span>Account</span><strong>₹1,00,000</strong><small>Per account</small></article>
+                    <article class="metric-card"><span>Risk / trade</span><strong>₹2,000</strong><small>Maximum planned risk</small></article>
+                    <article class="metric-card"><span>Freshness</span><strong>1 hour</strong><small>Older = stale</small></article>
+                    <article class="metric-card"><span>Leverage</span><strong>1×</strong><small>No leverage</small></article>
                 </div>
+            </section>
 
-            </article>
+            <section class="section-block">
+                <div class="section-heading"><div><span class="eyebrow">LIVE STATE</span><h2>Latest signals</h2></div><button class="text-button" data-page-link="signals" type="button">View all →</button></div>
+                <div id="overviewSignals" class="stack"><div class="empty-state">Loading signals…</div></div>
+            </section>
 
+            <section class="section-block">
+                <div class="section-heading"><div><span class="eyebrow">PAPER POSITIONS</span><h2>Open trades</h2></div><button class="text-button" data-page-link="trades" type="button">View all →</button></div>
+                <div id="overviewTrades" class="stack"><div class="empty-state">Loading trades…</div></div>
+            </section>
         </section>
 
-
-        <!-- =================================================
-             TRADES
-             ================================================= -->
-
-        <section
-            id="page-trades"
-            class="page"
-        >
-
-            <div class="page-heading">
-
-                <div>
-
-                    <span class="eyebrow">
-                        PAPER TRADING
-                    </span>
-
-                    <h1>
-                        Trades
-                    </h1>
-
-                    <p>
-                        Entry, stop-loss and take-profit.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <div class="metric-grid">
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Open
-                    </span>
-
-                    <strong
-                        id="tradesOpenCount"
-                        class="metric-value"
-                    >
-                        0
-                    </strong>
-
-                </article>
-
-
-                <article class="metric-card">
-
-                    <span class="metric-label">
-                        Closed
-                    </span>
-
-                    <strong
-                        id="tradesClosedCount"
-                        class="metric-value"
-                    >
-                        0
-                    </strong>
-
-                </article>
-
-            </div>
-
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Active Trades
-                    </h2>
-
-                    <span>
-                        1× leverage
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <article
-                id="tradesList"
-                class="panel"
-            >
-
-                <div class="empty-state">
-                    No open trades.
-                </div>
-
-            </article>
-
+        <section id="page-trades" class="page" aria-labelledby="tradesTitle">
+            <div class="page-heading"><div><span class="eyebrow">PAPER TRADING</span><h1 id="tradesTitle">Trades</h1><p>Every active and completed paper position, with the full plan available on expand.</p></div></div>
+            <div class="metric-grid two"><article class="metric-card"><span>Open</span><strong id="tradesOpenCount">0</strong><small>Currently active</small></article><article class="metric-card"><span>Closed</span><strong id="tradesClosedCount">0</strong><small>Recorded history</small></article></div>
+            <section class="section-block"><div class="section-heading"><div><span class="eyebrow">ACTIVE</span><h2>Open trades</h2></div></div><div id="tradesList" class="stack"><div class="empty-state">No open trades.</div></div></section>
         </section>
 
-
-        <!-- =================================================
-             SIGNALS
-             ================================================= -->
-
-        <section
-            id="page-signals"
-            class="page"
-        >
-
-            <div class="page-heading">
-
-                <div>
-
-                    <span class="eyebrow">
-                        STRATEGIES
-                    </span>
-
-                    <h1>
-                        Signals
-                    </h1>
-
-                    <p>
-                        Direction, strategy and freshness.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <div class="signal-legend">
-
-                <span class="legend buy">
-                    BUY
-                </span>
-
-                <span class="legend sell">
-                    SELL
-                </span>
-
-                <span class="legend neutral">
-                    NEUTRAL
-                </span>
-
-                <span class="legend stale">
-                    STALE
-                </span>
-
-            </div>
-
-
-            <article
-                id="signalsList"
-                class="panel"
-            >
-
-                <div class="empty-state">
-                    No signals loaded.
-                </div>
-
-            </article>
-
+        <section id="page-signals" class="page" aria-labelledby="signalsTitle">
+            <div class="page-heading"><div><span class="eyebrow">STRATEGIES</span><h1 id="signalsTitle">Signals</h1><p>Canonical strategy output. Tap a card to reveal the complete signal context.</p></div></div>
+            <div class="legend"><span class="legend-chip buy">🟢 BUY</span><span class="legend-chip sell">🔴 SELL</span><span class="legend-chip neutral">⚪ NEUTRAL</span><span class="legend-chip stale">⚠ STALE</span></div>
+            <div id="signalsList" class="stack"><div class="empty-state">No signals loaded.</div></div>
         </section>
 
-
-        <!-- =================================================
-             HISTORY
-             ================================================= -->
-
-        <section
-            id="page-history"
-            class="page"
-        >
-
-            <div class="page-heading">
-
-                <div>
-
-                    <span class="eyebrow">
-                        RECORDS
-                    </span>
-
-                    <h1>
-                        History
-                    </h1>
-
-                    <p>
-                        Historical signals and completed trades.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <article
-                id="historyList"
-                class="panel"
-            >
-
-                <div class="empty-state">
-                    No historical records loaded.
-                </div>
-
-            </article>
-
+        <section id="page-history" class="page" aria-labelledby="historyTitle">
+            <div class="page-heading"><div><span class="eyebrow">RECORDS</span><h1 id="historyTitle">History</h1><p>Completed paper trades and their outcomes.</p></div></div>
+            <div id="historyList" class="stack"><div class="empty-state">No historical records loaded.</div></div>
         </section>
 
-
-        <!-- =================================================
-             NEWS
-             ================================================= -->
-
-        <section
-            id="page-news"
-            class="page"
-        >
-
-            <div class="page-heading">
-
-                <div>
-
-                    <span class="eyebrow">
-                        MARKET
-                    </span>
-
-                    <h1>
-                        News
-                    </h1>
-
-                    <p>
-                        Market information from the configured source.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <article
-                id="newsList"
-                class="panel"
-            >
-
-                <div class="empty-state">
-                    No news loaded.
-                </div>
-
-            </article>
-
+        <section id="page-news" class="page" aria-labelledby="newsTitle">
+            <div class="page-heading"><div><span class="eyebrow">MARKET INFORMATION</span><h1 id="newsTitle">News</h1><p>Information exposed by the configured runtime source.</p></div></div>
+            <div id="newsList" class="stack"><div class="empty-state">No news loaded.</div></div>
         </section>
 
-
-        <!-- =================================================
-             TOOLS
-             ================================================= -->
-
-        <section
-            id="page-tools"
-            class="page"
-        >
-
-            <div class="page-heading">
-
-                <div>
-
-                    <span class="eyebrow">
-                        SYSTEM
-                    </span>
-
-                    <h1>
-                        Tools
-                    </h1>
-
-                    <p>
-                        Rules, universe and diagnostics.
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <!-- MARKET SESSION -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        NSE Session
-                    </h2>
-
-                    <span>
-                        Asia/Kolkata
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <article class="panel">
-
-                <div
-                    id="candleSchedule"
-                    class="schedule-grid"
-                ></div>
-
-            </article>
-
-
-            <!-- FIXED UNIVERSE -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        NSE-15 Universe
-                    </h2>
-
-                    <span>
-                        Fixed universe · no automatic refresh
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <article class="panel">
-
-                <div class="universe-grid">
-
-                    <span>RELIANCE</span>
-                    <span>BHARTIARTL</span>
-                    <span>HDFCBANK</span>
-                    <span>ICICIBANK</span>
-                    <span>SBIN</span>
-                    <span>TCS</span>
-                    <span>BAJFINANCE</span>
-                    <span>LT</span>
-                    <span>LICI</span>
-                    <span>SUNPHARMA</span>
-                    <span>HINDUNILVR</span>
-                    <span>INFY</span>
-                    <span>TITAN</span>
-                    <span>MARUTI</span>
-                    <span>KOTAKBANK</span>
-
-                </div>
-
-            </article>
-
-
-            <!-- RISK RULES -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Risk Rules
-                    </h2>
-
-                    <span>
-                        Frozen configuration
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <article class="panel rules-list">
-
-                <div class="rule-row">
-
-                    <strong>
-                        ACCOUNT
-                    </strong>
-
-                    <span>
-                        ₹1,00,000 per account
-                    </span>
-
-                </div>
-
-
-                <div class="rule-row">
-
-                    <strong>
-                        RISK
-                    </strong>
-
-                    <span>
-                        ₹2,000 maximum planned risk per trade
-                    </span>
-
-                </div>
-
-
-                <div class="rule-row">
-
-                    <strong>
-                        DAILY
-                    </strong>
-
-                    <span>
-                        Maximum 3 trades per day
-                    </span>
-
-                </div>
-
-
-                <div class="rule-row">
-
-                    <strong>
-                        LEVERAGE
-                    </strong>
-
-                    <span>
-                        1× / no leverage
-                    </span>
-
-                </div>
-
-            </article>
-
-
-            <!-- FRESHNESS -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Signal Freshness
-                    </h2>
-
-                    <span>
-                        Canonical boundary
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <article class="panel rule-panel">
-
-                <div class="rule-item">
-
-                    <span class="rule-icon fresh">
-                        ✓
-                    </span>
-
-                    <div>
-
-                        <strong>
-                            FRESH
-                        </strong>
-
-                        <p>
-                            Signal age is 1 hour or less.
-                        </p>
-
-                    </div>
-
-                </div>
-
-
-                <div class="rule-item">
-
-                    <span class="rule-icon stale">
-                        !
-                    </span>
-
-                    <div>
-
-                        <strong>
-                            STALE
-                        </strong>
-
-                        <p>
-                            Signal age is greater than 1 hour.
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </article>
-
-
-            <!-- SWEEP -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Sweep V2
-                    </h2>
-
-                    <span>
-                        Canonical signal conditions
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <article class="panel rules-list">
-
-                <div class="rule-row">
-
-                    <strong class="buy">
-                        BUY
-                    </strong>
-
-                    <span>
-                        Both sides swept and close above
-                        previous high.
-                    </span>
-
-                </div>
-
-
-                <div class="rule-row">
-
-                    <strong class="sell">
-                        SELL
-                    </strong>
-
-                    <span>
-                        Both sides swept and close below
-                        previous low.
-                    </span>
-
-                </div>
-
-
-                <div class="rule-row">
-
-                    <strong class="neutral">
-                        NEUTRAL
-                    </strong>
-
-                    <span>
-                        Both sides swept but close remains
-                        inside previous range.
-                    </span>
-
-                </div>
-
-
-                <div class="rule-row">
-
-                    <strong>
-                        NO SIGNAL
-                    </strong>
-
-                    <span>
-                        Both sides were not swept.
-                    </span>
-
-                </div>
-
-            </article>
-
-
-            <!-- BACKTEST -->
-
-            <div class="section-heading">
-
-                <div>
-
-                    <h2>
-                        Backtest
-                    </h2>
-
-                    <span>
-                        Shared strategy engine
-                    </span>
-
-                </div>
-
-            </div>
-
-
-            <article class="panel">
-
-                <div class="backtest-placeholder">
-
-                    <strong>
-                        Backtest engine ready
-                    </strong>
-
-                    <p>
-                        The backtester uses the same strategy
-                        functions as live evaluation.
-                    </p>
-
-                </div>
-
-            </article>
-
+        <section id="page-tools" class="page" aria-labelledby="toolsTitle">
+            <div class="page-heading"><div><span class="eyebrow">SYSTEM</span><h1 id="toolsTitle">Tools & rules</h1><p>Operational truth without exposing unnecessary developer details on the overview.</p></div></div>
+            <section class="tool-card"><div class="section-heading"><div><span class="eyebrow">MARKET</span><h2>NSE session</h2></div><span class="tool-tag">Asia/Kolkata</span></div><div id="candleSchedule" class="schedule-grid"></div><p class="tool-note">Canonical 1H closes: 10:15, 11:15, 12:15, 13:15, 14:15 and 15:15. No 15:15→16:15 candle.</p></section>
+            <section class="tool-card"><div class="section-heading"><div><span class="eyebrow">UNIVERSE</span><h2>NSE-15</h2></div><span class="tool-tag">Fixed</span></div><div id="universeGrid" class="universe-grid"></div></section>
+            <section class="tool-card"><div class="section-heading"><div><span class="eyebrow">ACCOUNTS</span><h2>Independent limits</h2></div></div><div id="accountsGrid" class="account-grid"></div></section>
+            <section class="tool-card"><div class="section-heading"><div><span class="eyebrow">STRATEGIES</span><h2>Locked execution rules</h2></div></div><div class="rule-list">
+                <div><b>TrendPulse</b><span>1.5 ATR SL · 3 ATR TP · ₹2,000 risk</span></div>
+                <div><b>Sweep V2</b><span>Two-sided sweep · market entry · sweep extreme SL · 1:2 TP</span></div>
+                <div><b>Freshness</b><span>≤ 1 hour fresh · &gt; 1 hour stale</span></div>
+                <div><b>Messages</b><span>Initial + one reminder maximum · no third send</span></div>
+                <div><b>Persistence</b><span>Supabase production durability · SQLite local cache/fallback</span></div>
+                <div><b>Trading mode</b><span>Paper only · 1× leverage</span></div>
+            </div></section>
+            <section class="tool-card"><div class="section-heading"><div><span class="eyebrow">DIAGNOSTICS</span><h2>Runtime</h2></div></div><div id="diagnostics" class="diagnostic-grid"></div><div class="backtest-chart" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div></section>
         </section>
-
     </main>
-
-
-    <!-- =====================================================
-         MOBILE NAVIGATION
-         ===================================================== -->
-
-    <nav class="mobile-nav">
-
-        <button
-            type="button"
-            class="mobile-nav-button active"
-            data-page="overview"
-        >
-            <span>⌂</span>
-            Overview
-        </button>
-
-        <button
-            type="button"
-            class="mobile-nav-button"
-            data-page="trades"
-        >
-            <span>▣</span>
-            Trades
-        </button>
-
-        <button
-            type="button"
-            class="mobile-nav-button"
-            data-page="signals"
-        >
-            <span>◈</span>
-            Signals
-        </button>
-
-        <button
-            type="button"
-            class="mobile-nav-button"
-            data-page="history"
-        >
-            <span>◷</span>
-            History
-        </button>
-
-        <button
-            type="button"
-            class="mobile-nav-button"
-            data-page="news"
-        >
-            <span>◉</span>
-            News
-        </button>
-
-        <button
-            type="button"
-            class="mobile-nav-button"
-            data-page="tools"
-        >
-            <span>⚙</span>
-            Tools
-        </button>
-
-    </nav>
-
-
-    <footer class="footer">
-
-        MULTIBOT2
-        <span>•</span>
-        Paper Trading
-        <span>•</span>
-        1× Leverage
-
-    </footer>
-
 </div>
 
+<nav class="mobile-nav" aria-label="Mobile navigation">
+    <button class="nav-button active" data-page="overview" type="button"><span>⌂</span>Home</button>
+    <button class="nav-button" data-page="trades" type="button"><span>◈</span>Trades</button>
+    <button class="nav-button" data-page="signals" type="button"><span>◆</span>Signals</button>
+    <button class="nav-button" data-page="history" type="button"><span>◷</span>History</button>
+    <button class="nav-button" data-page="tools" type="button"><span>⚙</span>Tools</button>
+</nav>
 
-<script src="app.js"></script>
-
+<template id="skeletonTemplate"><div class="skeleton-card"><span></span><span></span><span></span></div></template>
+<script src="app.js" defer></script>
 </body>
 </html>
