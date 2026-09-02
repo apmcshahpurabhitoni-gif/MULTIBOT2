@@ -18,6 +18,7 @@ CALENDAR_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 NEXT_WEEK_URL = "https://nfs.faireconomy.media/ff_calendar_nextweek.json"
 FOREX_FACTORY_CALENDAR = "https://www.forexfactory.com/calendar"
 CACHE_TTL_SECONDS = 3600
+MIN_FETCH_GAP_SECONDS = 300
 IMPACTS = ("High", "Medium", "Low", "Holiday")
 
 
@@ -46,8 +47,12 @@ class CalendarService:
 
     def _fetch_feed(self, feed_key: str, url: str, *, force: bool = False) -> list[dict]:
         cached = self._cache.get(feed_key)
-        if not force and cached and time.monotonic() - cached[1] < self.ttl_seconds:
-            return cached[0]
+        if cached:
+            age = time.monotonic() - cached[1]
+            if age < MIN_FETCH_GAP_SECONDS:
+                return cached[0]
+            if not force and age < self.ttl_seconds:
+                return cached[0]
 
         req = urllib.request.Request(
             url,
@@ -164,10 +169,9 @@ class CalendarService:
 
     def refresh(self, *, target_date: str | None = None, impacts: set[str] | None = None) -> dict:
         with self._lock:
-            self._cache.clear()
             return self.get(target_date=target_date, impacts=impacts, force=True)
 
 
 NewsService = CalendarService
 
-__all__ = ["CalendarService", "NewsService", "CACHE_TTL_SECONDS"]
+__all__ = ["CalendarService", "NewsService", "CACHE_TTL_SECONDS", "MIN_FETCH_GAP_SECONDS"]
