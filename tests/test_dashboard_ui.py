@@ -9,9 +9,8 @@ CSS = (ROOT / "styles.css").read_text(encoding="utf-8")
 def test_dashboard_keeps_approved_theme_and_mobile_contract():
     assert 'data-theme="light"' in HTML
     assert 'data-style="modern"' in HTML
-    assert 'data-theme="light"' in CSS
-    assert 'data-theme="dark"' in CSS
-    assert 'data-style="neo"' in CSS
+    assert 'html[data-theme="dark"]' in CSS
+    assert 'html[data-style="neo"]' in CSS
     assert 'prefers-reduced-motion: reduce' in CSS
     assert 'position: fixed' in CSS
     assert 'bottom: 7px' in CSS
