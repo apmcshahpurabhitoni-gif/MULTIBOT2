@@ -4,25 +4,37 @@ Render runs this immediately before main.py so every process start announces
 exactly which version/build is running and what changed in that release.
 """
 from __future__ import annotations
+
 import json
 import logging
 import os
 from urllib import parse, request
 
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.4")
+APP_VERSION = os.getenv("MULTIBOT2_VERSION", "1.0.5")
 BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
 logger = logging.getLogger("multibot2.startup")
 BR = "━━━━━━━━━━━━━━━━━━━━━━"
 
+
 def telegram_send(token: str, chat_id: str, text: str) -> None:
     payload = parse.urlencode({"chat_id": chat_id, "text": text}).encode()
-    req = request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=payload, method="POST")
+    req = request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=payload,
+        method="POST",
+    )
     with request.urlopen(req, timeout=20) as response:
         data = json.loads(response.read())
+
     if not data.get("ok"):
         raise RuntimeError(f"Telegram sendMessage failed: {data}")
+
 
 def startup_message() -> str:
     return (
@@ -32,39 +44,59 @@ def startup_message() -> str:
         "⏳ Signal freshness: 1h\n💾 Persistence: Supabase\n" + BR
     )
 
+
 def whats_new_message() -> str:
     return (
         f"🆕 WHAT'S NEW — v{APP_VERSION}\n{BR}\n"
         "🛠️ FIXED\n"
-        "🚫 Automated TrendPulse NO_SIGNAL / NEUTRAL scans are silent\n"
-        "🚫 Automated stale/duplicate/limit rejections no longer send SIGNAL NOT SENT spam\n"
-        "🚫 A normal 15-symbol scan cannot produce 15 rejection notifications\n"
-        "🟡 Sweep neutral results remain informational, not trade rejections\n"
-        "🔧 Restored the canonical Sweep engine module required by the runtime\n\n"
+        "🎨 Dashboard no longer looks like a stripped-down copy of the approved UI\n"
+        "📐 Restored stronger card hierarchy, spacing, navigation, status pills and visual depth\n"
+        "📱 Improved mobile-first layout and fixed bottom navigation presentation\n"
+        "🌙 Preserved genuinely dark mode and Neo-Brutalist theme behavior\n"
+        "♿ Preserved reduced-motion support and horizontal-overflow protection\n"
+        "🚫 No trading strategy, execution, risk, persistence or Telegram behavior changed\n\n"
         "➕ ADDED / IMPROVED\n"
-        "🧪 Regression coverage for rejection-silence behavior\n"
-        "📨 Startup and What's New are sent independently\n"
-        "🛡️ Startup announcements no longer depend on Markdown parsing\n"
-        "🧭 Version/build is reported on every restart\n"
+        "✨ Premium visual hierarchy for overview, signals, trades, news and tools\n"
+        "🎯 Clearer accent states for BUY/SELL, freshness, risk and news impact\n"
+        "🧭 Cleaner navigation and responsive spacing across desktop and mobile\n"
+        "📊 More polished metric, chart, form and table presentation\n"
+        "🧩 Kept the existing /api/dashboard presentation contract intact\n"
         "🚫 No FVG logic added\n" + BR
     )
 
-def _send_notice(token: str, chat_id: str, label: str, text: str) -> None:
+
+def _send_notice(
+    token: str,
+    chat_id: str,
+    label: str,
+    text: str,
+) -> None:
     try:
         telegram_send(token, chat_id, text)
-        logger.info("%s announcement sent: version=%s build=%s", label, APP_VERSION, BUILD)
+        logger.info(
+            "%s announcement sent: version=%s build=%s",
+            label,
+            APP_VERSION,
+            BUILD,
+        )
     except Exception as exc:
         logger.warning("%s announcement failed: %s", label, exc)
+
 
 def main() -> int:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
     if not token or not chat_id:
-        logger.warning("Startup Telegram announcement skipped: Telegram credentials are missing")
+        logger.warning(
+            "Startup Telegram announcement skipped: Telegram credentials are missing"
+        )
         return 0
+
     _send_notice(token, chat_id, "startup", startup_message())
     _send_notice(token, chat_id, "whats-new", whats_new_message())
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
