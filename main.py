@@ -17,8 +17,9 @@ import pandas as pd
 
 from backtest import sweep_backtest, trendpulse_backtest
 from config import (
-    ACCOUNT_NAMES, ACCOUNT_SIZE_INR, ACCOUNT_TRADE_LIMITS, IST_TIMEZONE,
-    NSE_15_SYMBOLS, RISK_PER_TRADE_INR, settings, validate_configuration,
+    ACCOUNT_NAMES, ACCOUNT_SIZE_INR, ACCOUNT_TRADE_LIMITS, APP_VERSION,
+    BACKTEST_ASSETS, IST_TIMEZONE, NSE_15_SYMBOLS, RISK_PER_TRADE_INR,
+    WHAT_IS_NEW, settings, validate_configuration,
 )
 from db import DatabaseManager
 from news import NewsService
@@ -79,13 +80,7 @@ def init_state() -> None:
     global ACCOUNTS, ACTIVE, HISTORY, SIGNALS
     rows = DB.load_accounts(ACCOUNT_NAMES, ACCOUNT_SIZE_INR, now().date().isoformat())
     ACCOUNTS = {
-        name: AccountState(
-            name,
-            float(rows[name]["starting_balance"]),
-            float(rows[name]["balance"]),
-            float(rows[name]["planned_risk_used"]),
-            int(rows[name]["trades_today"]),
-        )
+        name: AccountState(name, float(rows[name]["starting_balance"]), float(rows[name]["balance"]), float(rows[name]["planned_risk_used"]), int(rows[name]["trades_today"]))
         for name in ACCOUNT_NAMES
     }
     ACTIVE = DB.load_trades("OPEN")
@@ -109,34 +104,12 @@ def ensure_runtime() -> None:
 
 
 def persist_account(account: AccountState) -> None:
-    DB.save_account(
-        account.name,
-        balance=account.balance,
-        trades_today=account.trades_today,
-        planned_risk_used=account.planned_risk_used,
-        reset_date=now().date().isoformat(),
-    )
+    DB.save_account(account.name, balance=account.balance, trades_today=account.trades_today, planned_risk_used=account.planned_risk_used, reset_date=now().date().isoformat())
 
 
 def trade_row(result) -> dict:
     plan = result.trade.plan
-    return {
-        "id": f"{result.account}_{result.symbol}_{int(time.time() * 1000)}",
-        "status": "OPEN",
-        "symbol": result.symbol,
-        "market": "NSE",
-        "account": result.account,
-        "strategy": plan.strategy,
-        "type": plan.side,
-        "entry": plan.entry,
-        "sl": plan.stop_loss,
-        "tp": plan.take_profit,
-        "qty": result.trade.quantity,
-        "risk_per_unit": plan.risk_per_unit,
-        "planned_risk": result.trade.planned_risk,
-        "signal_ts": plan.signal_timestamp.isoformat(),
-        "opened_at": now().isoformat(),
-    }
+    return {"id": f"{result.account}_{result.symbol}_{int(time.time() * 1000)}", "status": "OPEN", "symbol": result.symbol, "market": "NSE", "account": result.account, "strategy": plan.strategy, "type": plan.side, "entry": plan.entry, "sl": plan.stop_loss, "tp": plan.take_profit, "qty": result.trade.quantity, "risk_per_unit": plan.risk_per_unit, "planned_risk": result.trade.planned_risk, "signal_ts": plan.signal_timestamp.isoformat(), "opened_at": now().isoformat()}
 
 
 def record_result(result) -> None:
@@ -162,13 +135,7 @@ def run_trendpulse_cycle(*, now_at=None, send=True, period="30d"):
     for result in results:
         _record_signal(result)
         record_result(result)
-    LAST_SCAN = {
-        "status": "COMPLETE",
-        "at": now().isoformat(),
-        "checked": len(NSE_15_SYMBOLS),
-        "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results),
-        "sent": sum(bool(r.sent) for r in results),
-    }
+    LAST_SCAN = {"status": "COMPLETE", "at": now().isoformat(), "checked": len(NSE_15_SYMBOLS), "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results), "sent": sum(bool(r.sent) for r in results)}
     return results
 
 
@@ -179,13 +146,7 @@ def run_sweep_cycle(*, now_at=None, send=True, period="30d"):
     for result in results:
         _record_signal(result)
         record_result(result)
-    LAST_SCAN = {
-        "status": "COMPLETE",
-        "at": now().isoformat(),
-        "checked": len(NSE_15_SYMBOLS),
-        "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results),
-        "sent": sum(bool(r.sent) for r in results),
-    }
+    LAST_SCAN = {"status": "COMPLETE", "at": now().isoformat(), "checked": len(NSE_15_SYMBOLS), "directional": sum(r.signal.signal in ("BUY", "SELL") for r in results), "sent": sum(bool(r.sent) for r in results)}
     return results
 
 
@@ -209,32 +170,17 @@ def monitor_once() -> None:
         if not (hit_tp or hit_sl):
             continue
         pnl = (live - row["entry"]) * row["qty"] if is_long else (row["entry"] - live) * row["qty"]
-        row.update(
-            status="CLOSED",
-            exit_price=live,
-            pnl=pnl,
-            exit_reason="TP" if hit_tp else "SL",
-            closed_at=now().isoformat(),
-        )
+        row.update(status="CLOSED", exit_price=live, pnl=pnl, exit_reason="TP" if hit_tp else "SL", closed_at=now().isoformat())
         ACTIVE.remove(row)
         HISTORY.insert(0, row)
         DB.save_trade(row["id"], "CLOSED", row, row["closed_at"])
         account = ACCOUNTS[row["account"]]
-        updated = AccountState(
-            account.name,
-            account.starting_balance,
-            account.balance + pnl,
-            max(0.0, account.planned_risk_used - float(row.get("planned_risk", 0.0))),
-            account.trades_today,
-        )
+        updated = AccountState(account.name, account.starting_balance, account.balance + pnl, max(0.0, account.planned_risk_used - float(row.get("planned_risk", 0.0))), account.trades_today)
         ACCOUNTS[row["account"]] = updated
         persist_account(updated)
         if settings.telegram_bot_token and settings.telegram_chat_id:
             try:
-                send_message(
-                    trade_closed_message(row, live, pnl, updated.balance, is_long, hit_tp),
-                    TelegramConfig.from_env(),
-                )
+                send_message(trade_closed_message(row, live, pnl, updated.balance, is_long, hit_tp), TelegramConfig.from_env())
             except Exception as exc:
                 logger.warning("trade-close Telegram send failed: %s", exc)
 
@@ -265,12 +211,14 @@ def _backtest_payload(strategy: str, symbol: str, period: str) -> dict:
     if strategy_key not in {"trendpulse", "sweepv2", "sweep"}:
         raise ValueError("strategy must be TrendPulse or Sweep V2")
     symbol = symbol.strip().upper()
-    if symbol not in NSE_15_SYMBOLS:
-        raise ValueError("symbol must belong to the locked NSE-15 universe")
+    asset = BACKTEST_ASSETS.get(symbol)
+    if asset is None:
+        raise ValueError("symbol must be a supported backtest asset")
     if period not in {"5d", "30d", "60d", "90d", "1y"}:
         raise ValueError("period must be one of 5d, 30d, 60d, 90d or 1y")
 
-    frame = RUNTIME.provider.fetch(f"{symbol}.NS", period=period, interval="1h", validate_hourly=True)
+    is_nse = asset["asset_type"] == "equity"
+    frame = RUNTIME.provider.fetch(asset["ticker"], period=period, interval="1h", validate_hourly=is_nse)
     result = trendpulse_backtest(frame, account="nifty") if strategy_key == "trendpulse" else sweep_backtest(frame, account="sweep_4h")
     daily: dict[str, dict[str, int]] = {}
     rows = []
@@ -278,63 +226,33 @@ def _backtest_payload(strategy: str, symbol: str, period: str) -> dict:
         signal = item.signal
         if signal.signal not in ("BUY", "SELL"):
             continue
-        day = pd.Timestamp(item.candle_timestamp).tz_convert(IST_TIMEZONE).strftime("%d %b")
+        ts = pd.Timestamp(item.candle_timestamp)
+        ts = ts.tz_localize(IST_TIMEZONE) if ts.tzinfo is None else ts.tz_convert(IST_TIMEZONE)
+        day = ts.strftime("%Y-%m-%d")
         bucket = daily.setdefault(day, {"buy": 0, "sell": 0, "total": 0})
         bucket[signal.signal.lower()] += 1
         bucket["total"] += 1
-        rows.append({
-            "timestamp": signal.timestamp.isoformat(),
-            "direction": signal.signal,
-            "reason": signal.reason,
-            "entry": signal.entry,
-        })
-    daily_rows = [{"date": date, **values} for date, values in daily.items()]
-    return {
-        "strategy": result.strategy,
-        "symbol": symbol,
-        "period": period,
-        "account": result.account,
-        "starting_account": result.starting_account,
-        "total_signals": result.total_signals,
-        "buy_signals": result.buy_signals,
-        "sell_signals": result.sell_signals,
-        "neutral_signals": result.neutral_signals,
-        "trades_taken": result.trades_taken,
-        "planned_risk": result.planned_risk,
-        "candle_count": len(frame),
-        "daily": daily_rows,
-        "signals": rows[-200:],
-        "generated_at": now().isoformat(),
-    }
+        rows.append({"timestamp": signal.timestamp.isoformat(), "direction": signal.signal, "reason": signal.reason, "entry": signal.entry})
+    daily_rows = [{"date": day, **values} for day, values in sorted(daily.items())]
+    return {"ok": True, "strategy": result.strategy, "symbol": symbol, "asset": asset, "period": period, "account": result.account, "starting_account": result.starting_account, "total_signals": result.total_signals, "buy_signals": result.buy_signals, "sell_signals": result.sell_signals, "neutral_signals": result.neutral_signals, "trades_taken": result.trades_taken, "planned_risk": result.planned_risk, "candle_count": len(frame), "daily": daily_rows, "signals": rows[-200:], "generated_at": now().isoformat()}
 
 
 def snapshot() -> dict:
     ensure_runtime()
     with LOCK:
-        account_rows = [
-            {
-                "name": a.name,
-                "starting_balance": a.starting_balance,
-                "balance": a.balance,
-                "planned_risk_used": a.planned_risk_used,
-                "daily_trade_limit": a.daily_trade_limit,
-                "max_daily_planned_risk": a.max_daily_planned_risk,
-                "trades_today": a.trades_today,
-                "remaining_trades": a.remaining_trades,
-                "remaining_planned_risk": a.remaining_planned_risk,
-            }
-            for a in ACCOUNTS.values()
-        ]
+        account_rows = [{"name": a.name, "starting_balance": a.starting_balance, "balance": a.balance, "planned_risk_used": a.planned_risk_used, "daily_trade_limit": a.daily_trade_limit, "max_daily_planned_risk": a.max_daily_planned_risk, "trades_today": a.trades_today, "remaining_trades": a.remaining_trades, "remaining_planned_risk": a.remaining_planned_risk} for a in ACCOUNTS.values()]
         return {
+            "version": APP_VERSION,
+            "whats_new": list(WHAT_IS_NEW),
             "system": {"status": "ONLINE", "mode": "PAPER", "timezone": IST_TIMEZONE, "timeframe": "1h", "leverage": 1},
             "rules": {"account_size_inr": ACCOUNT_SIZE_INR, "risk_per_trade_inr": RISK_PER_TRADE_INR, "account_trade_limits": dict(ACCOUNT_TRADE_LIMITS), "signal_freshness_hours": 1},
             "universe": {"count": 15, "symbols": list(NSE_15_SYMBOLS), "fixed": True},
+            "backtest_assets": [{"key": key, **asset} for key, asset in BACKTEST_ASSETS.items()],
             "accounts": {"count": 4, "names": list(ACCOUNT_NAMES), "data": account_rows},
             "signals": list(SIGNALS[:500]),
             "trades": ACTIVE + HISTORY[:200],
             "counts": {"signals": len(SIGNALS), "trades": len(ACTIVE) + len(HISTORY), "open_trades": len(ACTIVE), "closed_trades": len(HISTORY)},
             "scan": dict(LAST_SCAN),
-            "news": NEWS.get(),
             "generated_at": now().isoformat(),
         }
 
@@ -345,32 +263,39 @@ def _json_response(start, payload, status="200 OK"):
     return [body]
 
 
+def _calendar_payload(query: dict) -> dict:
+    target_date = query.get("date", [None])[0]
+    impact_values = query.get("impact", ["All"])[0]
+    impacts = {value.strip().title() for value in impact_values.split(",") if value.strip()}
+    if not impacts or "All" in impacts:
+        impacts = {"All"}
+    return NEWS.get(target_date=target_date, impacts=impacts, force=query.get("refresh") == ["1"])
+
+
 def web_server() -> None:
     root = os.path.dirname(__file__)
-    files = {
-        "/": ("dashboard.html", "text/html; charset=utf-8"),
-        "/dashboard": ("dashboard.html", "text/html; charset=utf-8"),
-        "/app.js": ("app.js", "application/javascript"),
-        "/styles.css": ("styles.css", "text/css"),
-    }
+    files = {"/": ("dashboard.html", "text/html; charset=utf-8"), "/dashboard": ("dashboard.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "application/javascript"), "/styles.css": ("styles.css", "text/css")}
 
     def app(env, start):
         path = env.get("PATH_INFO", "/")
         query = parse.parse_qs(env.get("QUERY_STRING", ""))
         if path in ("/ping", "/api/health"):
-            payload = {"ok": True, "status": "ONLINE", "timestamp": now().isoformat()}
+            payload = {"ok": True, "status": "ONLINE", "timestamp": now().isoformat(), "version": APP_VERSION}
             if path == "/ping":
                 start("200 OK", [("Content-Type", "text/plain"), ("Cache-Control", "no-store")])
                 return [b"pong"]
             return _json_response(start, payload)
         if path == "/api/dashboard":
             return _json_response(start, snapshot())
-        if path == "/api/news":
-            return _json_response(start, NEWS.refresh() if query.get("refresh") == ["1"] else NEWS.get())
+        if path in ("/api/calendar", "/api/news"):
+            try:
+                return _json_response(start, _calendar_payload(query))
+            except Exception as exc:
+                return _json_response(start, {"ok": False, "error": str(exc)}, "400 Bad Request")
         if path == "/api/backtest":
             try:
                 strategy = query.get("strategy", ["TrendPulse"])[0]
-                symbol = query.get("symbol", [NSE_15_SYMBOLS[0]])[0]
+                symbol = query.get("symbol", [next(iter(BACKTEST_ASSETS))])[0]
                 period = query.get("period", ["30d"])[0]
                 return _json_response(start, _backtest_payload(strategy, symbol, period))
             except Exception as exc:
@@ -477,7 +402,7 @@ def main() -> None:
         threading.Thread(target=telegram_commands, daemon=True, name="telegram").start()
         if REMINDERS is not None:
             REMINDERS.start()
-    logger.info("MULTIBOT2 started: NSE-15, Yahoo, 1H, 1h freshness, paper mode")
+    logger.info("MULTIBOT2 %s started: NSE-15, Yahoo, 1H, 1h freshness, paper mode", APP_VERSION)
     while True:
         time.sleep(3600)
 
