@@ -15,7 +15,7 @@ from trendpulse_runtime import TrendPulseRuntime
 @dataclass(frozen=True)
 class SweepDispatchResult:
     symbol:str; signal:StrategySignal; trade:PaperTrade|None; message:TelegramMessage|None
-    sent:bool; reason:str; account:str="sweep_4h"
+    sent:bool; reason:str; account:str="sweep_4h"; trade_id:str|None=None
 
 class SweepService:
     DEFAULT_ACCOUNT="sweep_4h"

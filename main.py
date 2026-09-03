@@ -75,6 +75,36 @@ def record_result(result):
     SIGNALS=DB.load_signal_history(500)
 
 
+def _run_scan(kind, runner):
+    """Run one scanner and keep dashboard scan status isolated by strategy."""
+    started = now()
+    try:
+        results = runner()
+        sent = sum(1 for result in results if result.sent)
+        directional = sum(1 for result in results if result.signal.signal in ("BUY", "SELL"))
+        LAST_SCANS[kind] = {
+            "status": "COMPLETE",
+            "at": started.isoformat(),
+            "checked": len(LIVE_ASSETS),
+            "directional": directional,
+            "sent": sent,
+            "errors": 0,
+        }
+        return results
+    except Exception as exc:
+        LAST_SCANS[kind] = {
+            "status": "ERROR",
+            "at": started.isoformat(),
+            "checked": 0,
+            "directional": 0,
+            "sent": 0,
+            "errors": 1,
+            "error": str(exc),
+        }
+        logger.exception("%s scan failed", kind)
+        return []
+
+
 def run_trendpulse_cycle(*,now_at=None,send=True,period="30d"):
     ensure_runtime()
     results=_run_scan("trendpulse",lambda: TREND.scan_universe_and_dispatch(now=now_at,period=period,send=send,account_name="nifty"))
