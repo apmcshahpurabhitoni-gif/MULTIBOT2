@@ -1,8 +1,5 @@
-"""MULTIBOT2 startup announcement.
+"""MULTIBOT2 startup announcement."""
 
-Render runs this immediately before main.py so every process start announces
-exactly which version/build is running and what changed in that release.
-"""
 from __future__ import annotations
 
 import json
@@ -12,53 +9,115 @@ from urllib import parse, request
 
 from config import APP_VERSION as CONFIG_APP_VERSION
 
+
 APP_NAME = "MULTIBOT2"
-APP_VERSION = os.getenv("MULTIBOT2_VERSION", CONFIG_APP_VERSION)
-BUILD = os.getenv("RENDER_GIT_COMMIT", "unknown")[:8]
-DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://lead-generator-zzty.onrender.com/dashboard")
+APP_VERSION = os.getenv(
+    "MULTIBOT2_VERSION",
+    CONFIG_APP_VERSION,
+)
+BUILD = os.getenv(
+    "RENDER_GIT_COMMIT",
+    "unknown",
+)[:8]
+
+# Canonical MULTIBOT2 dashboard.
+# Deliberately not configurable so an old Render environment variable
+# cannot accidentally point the bot back to another application.
+DASHBOARD_URL = (
+    "https://multibot2-t74l.onrender.com/dashboard"
+)
+
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
 )
-logger = logging.getLogger("multibot2.startup")
+
+logger = logging.getLogger(
+    "multibot2.startup"
+)
+
 BR = "━━━━━━━━━━━━━━━━━━━━━━"
 
 
-def telegram_send(token: str, chat_id: str, text: str) -> None:
-    payload = parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+def telegram_send(
+    token: str,
+    chat_id: str,
+    text: str,
+) -> None:
+    payload = parse.urlencode(
+        {
+            "chat_id": chat_id,
+            "text": text,
+        }
+    ).encode()
+
     req = request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage",
         data=payload,
         method="POST",
     )
-    with request.urlopen(req, timeout=20) as response:
-        data = json.loads(response.read())
+
+    with request.urlopen(
+        req,
+        timeout=20,
+    ) as response:
+        data = json.loads(
+            response.read()
+        )
 
     if not data.get("ok"):
-        raise RuntimeError(f"Telegram sendMessage failed: {data}")
+        raise RuntimeError(
+            f"Telegram sendMessage failed: {data}"
+        )
 
 
 def startup_message() -> str:
     return (
-        f"🤖 {APP_NAME} STARTED\n{BR}\n"
-        f"🟢 Status: ONLINE\n🏷 Version: {APP_VERSION}\n🔖 Build: {BUILD}\n"
-        "🧪 Mode: PAPER\n🌐 Universe: 19 live assets\n📈 TrendPulse: 1H + confirmed 4H\n🔎 Sweep V2: scheduled 1H/4H\n"
-        "⏳ Signal freshness: 1h\n💾 Persistence: Supabase\n\n"
-        f"🌐 DASHBOARD\n👉 {DASHBOARD_URL}\n" + BR
+        f"🤖 {APP_NAME} STARTED\n"
+        f"{BR}\n"
+        f"🟢 Status: ONLINE\n"
+        f"🏷 Version: {APP_VERSION}\n"
+        f"🔖 Build: {BUILD}\n"
+        "🧪 Mode: PAPER\n"
+        "🌐 Universe: 19 live assets\n"
+        "📈 TrendPulse: 1H + confirmed 4H\n"
+        "🔎 Sweep V2: NIFTY/BANK 1H · "
+        "Stocks/Gold/BTC 4H\n"
+        "⏳ Signal freshness: 1h\n"
+        "💾 Persistence: Supabase + SQLite fallback\n"
+        "\n"
+        "🌐 DASHBOARD\n"
+        f"👉 {DASHBOARD_URL}\n"
+        f"{BR}"
     )
 
 
 def whats_new_message() -> str:
     return (
-        f"🆕 WHAT'S NEW — v{APP_VERSION}\n{BR}\n"
-        "🌐 19-asset live universe: 15 NSE stocks + NIFTY + BANK NIFTY + Gold + BTC\n"
-        "📈 TrendPulse: completed 1H signal + confirmed 4H filter\n"
-        "🔎 Sweep V2: strict two-sided sweep + final-close classification\n"
-        "🕯️ Canonical NSE 1H closes: 10:15, 11:15, 12:15, 13:15, 14:15, 15:15\n"
-        "⏳ Freshness: exactly 1 hour; duplicate sends survive restart\n"
-        "💾 Supabase authoritative with SQLite fallback\n"
-        "🎨 Dashboard remains presentation-only and expandable\n" + BR
+        f"🆕 WHAT'S NEW — v{APP_VERSION}\n"
+        f"{BR}\n"
+        "🌐 19-asset live universe:\n"
+        "15 NSE stocks + NIFTY + BANK NIFTY "
+        "+ Gold + BTC\n"
+        "📈 TrendPulse: completed 1H signal "
+        "+ confirmed 4H filter\n"
+        "🔎 Sweep V2:\n"
+        "NIFTY/BANK = 1H\n"
+        "Stocks/Gold/BTC = 4H\n"
+        "🕯️ Canonical NSE 1H closes:\n"
+        "10:15, 11:15, 12:15, 13:15, "
+        "14:15, 15:15\n"
+        "⏳ Freshness: exactly 1 hour\n"
+        "🔁 Duplicate protection survives restart\n"
+        "💾 Supabase authoritative + "
+        "SQLite fallback\n"
+        "🎨 Dashboard is presentation-only "
+        "and expandable\n"
+        "\n"
+        "🌐 DASHBOARD\n"
+        f"👉 {DASHBOARD_URL}\n"
+        f"{BR}"
     )
 
 
@@ -69,29 +128,57 @@ def _send_notice(
     text: str,
 ) -> None:
     try:
-        telegram_send(token, chat_id, text)
+        telegram_send(
+            token,
+            chat_id,
+            text,
+        )
+
         logger.info(
-            "%s announcement sent: version=%s build=%s",
+            "%s announcement sent: "
+            "version=%s build=%s",
             label,
             APP_VERSION,
             BUILD,
         )
+
     except Exception as exc:
-        logger.warning("%s announcement failed: %s", label, exc)
+        logger.warning(
+            "%s announcement failed: %s",
+            label,
+            exc,
+        )
 
 
 def main() -> int:
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    token = os.getenv(
+        "TELEGRAM_BOT_TOKEN"
+    )
+    chat_id = os.getenv(
+        "TELEGRAM_CHAT_ID"
+    )
 
     if not token or not chat_id:
         logger.warning(
-            "Startup Telegram announcement skipped: Telegram credentials are missing"
+            "Startup Telegram announcement "
+            "skipped: Telegram credentials are missing"
         )
         return 0
 
-    _send_notice(token, chat_id, "startup", startup_message())
-    _send_notice(token, chat_id, "whats-new", whats_new_message())
+    _send_notice(
+        token,
+        chat_id,
+        "startup",
+        startup_message(),
+    )
+
+    _send_notice(
+        token,
+        chat_id,
+        "whats-new",
+        whats_new_message(),
+    )
+
     return 0
 
 
