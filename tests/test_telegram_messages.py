@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from strategies import StrategySignal
-from telegram import TelegramTemplateError, render_signal_message
+from telegram import DASHBOARD_URL, TelegramTemplateError, msg_start, render_signal_message
 
 
 def _signal(direction: str) -> StrategySignal:
@@ -94,3 +94,10 @@ def test_neutral_signal_fails_closed():
             ),
             symbol="RELIANCE.NS",
         )
+
+
+def test_start_message_uses_multibot2_dashboard_not_leadhunter():
+    message = msg_start()
+    assert DASHBOARD_URL == "https://multibot2-t74l.onrender.com/dashboard"
+    assert "https://multibot2-t74l.onrender.com/dashboard" in message
+    assert "lead-generator-zzty.onrender.com" not in message
