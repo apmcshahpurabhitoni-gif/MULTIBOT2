@@ -253,18 +253,98 @@ def _handle_command(chat_id,cmd):
         try: _send_chat(chat_id,msg_error(f"COMMAND {cmd}",exc))
         except Exception: pass
 
+def _telegram_api_call(token, method, payload=None, timeout=15):
+    """Call a Telegram Bot API method and return its decoded response."""
+    data = parse.urlencode(payload or {}).encode()
+    req = request.Request(
+        f"https://api.telegram.org/bot{token}/{method}",
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    with request.urlopen(req, timeout=timeout) as response:
+        body = json.loads(response.read())
+    if not body.get("ok"):
+        raise RuntimeError(body.get("description") or f"Telegram API {method} failed")
+    return body
+
+
+def _prepare_telegram_polling(token):
+    """Remove a webhook so this process can exclusively use getUpdates polling."""
+    _telegram_api_call(
+        token,
+        "deleteWebhook",
+        {"drop_pending_updates": "false"},
+        timeout=15,
+    )
+    me = _telegram_api_call(token, "getMe", timeout=15).get("result", {})
+    logger.info(
+        "Telegram polling ready: bot=@%s id=%s; webhook cleared",
+        me.get("username", "unknown"),
+        me.get("id", "unknown"),
+    )
+
+
 def telegram_commands():
     token=settings.telegram_bot_token
-    if not token: logger.warning("Telegram disabled: TELEGRAM_BOT_TOKEN missing"); return
+    if not token:
+        logger.warning("Telegram disabled: TELEGRAM_BOT_TOKEN missing")
+        return
+
+    try:
+        _prepare_telegram_polling(token)
+    except Exception as exc:
+        logger.warning("Telegram polling initialization failed: %s", exc)
+        STOP.wait(30)
+
     offset=0
+    conflict_logged_at=0.0
     while not STOP.is_set():
         try:
             payload=parse.urlencode({"timeout":20,"offset":offset}).encode()
-            with request.urlopen(request.Request(f"https://api.telegram.org/bot{token}/getUpdates",data=payload,method="POST"),timeout=30) as response: data=json.loads(response.read())
+            with request.urlopen(
+                request.Request(
+                    f"https://api.telegram.org/bot{token}/getUpdates",
+                    data=payload,
+                    method="POST",
+                    headers={"Content-Type":"application/x-www-form-urlencoded"},
+                ),
+                timeout=30,
+            ) as response:
+                data=json.loads(response.read())
+
+            if not data.get("ok", True):
+                description=str(data.get("description","Telegram getUpdates failed"))
+                if "409" in description or "conflict" in description.lower():
+                    raise RuntimeError(f"Telegram polling conflict: {description}")
+                raise RuntimeError(description)
+
             for update in data.get("result",[]):
-                offset=int(update["update_id"])+1; message=update.get("message",{}); chat_id=message.get("chat",{}).get("id"); text=str(message.get("text","")); cmd=text.split()[0].split("@")[0].lower() if text else ""
-                if chat_id and cmd: threading.Thread(target=_handle_command,args=(str(chat_id),cmd),daemon=True).start()
-        except Exception as exc: logger.warning("Telegram polling failed: %s",exc); STOP.wait(5)
+                offset=int(update["update_id"])+1
+                message=update.get("message",{})
+                chat_id=message.get("chat",{}).get("id")
+                text=str(message.get("text",""))
+                cmd=text.split()[0].split("@")[0].lower() if text else ""
+                if chat_id and cmd:
+                    threading.Thread(
+                        target=_handle_command,
+                        args=(str(chat_id),cmd),
+                        daemon=True,
+                    ).start()
+        except Exception as exc:
+            message=str(exc)
+            if "409" in message or "conflict" in message.lower():
+                now_ts=time.monotonic()
+                if now_ts-conflict_logged_at >= 60:
+                    logger.warning(
+                        "Telegram polling conflict (another consumer or active webhook): %s",
+                        message,
+                    )
+                    conflict_logged_at=now_ts
+                STOP.wait(30)
+            else:
+                logger.warning("Telegram polling failed: %s",exc)
+                STOP.wait(5)
 
 def main():
     ensure_runtime()
