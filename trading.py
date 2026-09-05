@@ -10,6 +10,7 @@ class TradingRuleError(ValueError):pass
 @dataclass(frozen=True)
 class TradePlan:
     strategy:str;side:TradeSide;signal_timestamp:pd.Timestamp;entry:float;stop_loss:float;take_profit:float
+    timeframe:str=""; strategy_version:str=""; metadata:dict|None=None; trailing_policy:dict|None=None
     @property
     def risk_per_unit(self):return abs(self.entry-self.stop_loss)
     @property

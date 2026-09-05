@@ -7,14 +7,16 @@ from dataclasses import dataclass
 from typing import Final
 
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "3.0.0"
 
 WHAT_IS_NEW: Final[tuple[str, ...]] = (
-    "Live universe is locked to 19 assets: 15 NSE stocks + NIFTY + BANK NIFTY + Gold + Bitcoin.",
-    "TrendPulse evaluates a completed 1H signal with a confirmed 4H filter.",
-    "Sweep V2 uses strict two-sided sweeps and final-close classification on the canonical schedules.",
-    "NSE 1H candles are built from complete 09:15 session minutes; no 15:15→16:15 candle is created.",
-    "Yahoo Finance remains the sole market-data provider; Supabase is authoritative with SQLite fallback.",
+    "🧩 Plug-and-play strategy architecture with automatic discovery.",
+    "🧠 Adaptive Trend Momentum is the BTC-USD + Gold strategy on 1D candles.",
+    "🔎 Sweep V2 is preserved behind the same strategy contract and canonical schedules.",
+    "📊 Strategy Lab backtesting now reports 11 metrics plus a transparent 0–100 rating.",
+    "⭐ Strategy results are versioned with parameter snapshots for reproducibility.",
+    "🛡️ Core freshness, duplicate, risk, account-limit, paper-mode and Yahoo-only rules remain locked.",
+    "📚 Added AI rebuild specification and strategy developer template for future plug-ins.",
 )
 
 IST_TIMEZONE: Final = "Asia/Kolkata"
@@ -67,11 +69,6 @@ class AssetConfig:
     asset_type: str
     group: str = "NSE Stocks"
 
-    # TrendPulse
-    trendpulse_signal_timeframe: str = "1H"
-    trendpulse_filter_timeframe: str = "4H"
-
-    # Sweep
     sweep_timeframe: str = "4H"
 
 
@@ -158,6 +155,11 @@ NSE_INDEX_SWEEP_HOURS_IST: Final[tuple[int, ...]] = (
 SWEEP_MINUTE_NSE: Final[int] = 15
 SWEEP_MINUTE_GLOBAL: Final[int] = 30
 
+SWEEP_TIMEFRAME_BY_SYMBOL: Final[dict[str, str]] = {
+    **{s: "4H" for s in NSE_15_SYMBOLS},
+    "^NSEI": "1H", "^NSEBANK": "1H", "GC=F": "4H", "BTC-USD": "4H",
+}
+
 
 # ---------------------------------------------------------------------------
 # ACCOUNT / RISK
@@ -194,8 +196,6 @@ BACKTEST_ASSETS = {
         "market": asset.market,
         "asset_type": asset.asset_type,
         "group": asset.group,
-        "trendpulse_signal_timeframe": asset.trendpulse_signal_timeframe,
-        "trendpulse_filter_timeframe": asset.trendpulse_filter_timeframe,
         "sweep_timeframe": asset.sweep_timeframe,
     }
     for asset in LIVE_ASSETS
@@ -221,7 +221,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         timezone = os.getenv("TIMEZONE", IST_TIMEZONE)
-        timeframe = os.getenv("TIMEFRAME", DEFAULT_TIMEFRAME)
+        timeframe = os.getenv("TIMEFRAME", DEFAULT_TIMEFRAME).strip().lower()
         provider = os.getenv(
             "MARKET_DATA_PROVIDER",
             MARKET_DATA_PROVIDER,
@@ -229,9 +229,6 @@ class Settings:
 
         if timezone != IST_TIMEZONE:
             raise ValueError("TIMEZONE must be Asia/Kolkata")
-
-        if timeframe != DEFAULT_TIMEFRAME:
-            raise ValueError("TIMEFRAME must be 1h")
 
         if provider != MARKET_DATA_PROVIDER:
             raise ValueError(
@@ -303,16 +300,12 @@ def validate_configuration() -> None:
     if BITCOIN_SYMBOL not in LIVE_ASSET_MAP:
         raise ValueError("Bitcoin is missing from live universe")
 
-    for asset in LIVE_ASSETS:
-        if asset.trendpulse_signal_timeframe != "1H":
-            raise ValueError(
-                f"TrendPulse signal timeframe invalid for {asset.symbol}"
-            )
-
-        if asset.trendpulse_filter_timeframe != "4H":
-            raise ValueError(
-                f"TrendPulse filter timeframe invalid for {asset.symbol}"
-            )
+    if set(SWEEP_TIMEFRAME_BY_SYMBOL) != set(LIVE_SYMBOLS):
+        raise ValueError("Sweep timeframe configuration must cover all live assets")
+    for symbol in NSE_15_SYMBOLS:
+        if SWEEP_TIMEFRAME_BY_SYMBOL[symbol] != "4H": raise ValueError(f"{symbol} Sweep must be 4H")
+    if SWEEP_TIMEFRAME_BY_SYMBOL["^NSEI"] != "1H" or SWEEP_TIMEFRAME_BY_SYMBOL["^NSEBANK"] != "1H": raise ValueError("NIFTY indexes Sweep must be 1H")
+    if SWEEP_TIMEFRAME_BY_SYMBOL[GOLD_SYMBOL] != "4H" or SWEEP_TIMEFRAME_BY_SYMBOL[BITCOIN_SYMBOL] != "4H": raise ValueError("Global Sweep must be 4H")
 
     if LIVE_ASSET_MAP["^NSEI"].sweep_timeframe != "1H":
         raise ValueError("NIFTY 50 Sweep must be 1H")
@@ -320,17 +313,6 @@ def validate_configuration() -> None:
     if LIVE_ASSET_MAP["^NSEBANK"].sweep_timeframe != "1H":
         raise ValueError("BANK NIFTY Sweep must be 1H")
 
-    for symbol in NSE_15_SYMBOLS:
-        if LIVE_ASSET_MAP[symbol].sweep_timeframe != "4H":
-            raise ValueError(
-                f"{symbol} Sweep must be 4H"
-            )
-
-    if LIVE_ASSET_MAP[GOLD_SYMBOL].sweep_timeframe != "4H":
-        raise ValueError("Gold Sweep must be 4H")
-
-    if LIVE_ASSET_MAP[BITCOIN_SYMBOL].sweep_timeframe != "4H":
-        raise ValueError("Bitcoin Sweep must be 4H")
 
     if ACCOUNT_SIZE_INR != 100_000:
         raise ValueError("Account size was changed")

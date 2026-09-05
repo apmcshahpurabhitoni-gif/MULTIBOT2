@@ -4,7 +4,7 @@ from dataclasses import dataclass,field
 from threading import RLock
 import pandas as pd
 from config import SIGNAL_FRESHNESS_HOURS,IST_TIMEZONE
-from strategies import StrategySignal
+from strategies import Signal
 MAX_MESSAGE_SEND_COUNT=2
 @dataclass
 class SignalGate:
@@ -20,21 +20,21 @@ class SignalGate:
         ts=pd.Timestamp(value)
         if ts.tzinfo is None:raise ValueError("Timestamp must be timezone-aware")
         return ts.tz_convert(IST_TIMEZONE)
-    def age_hours(self,signal:StrategySignal,*,now:pd.Timestamp|None=None)->float:
+    def age_hours(self,signal:Signal,*,now:pd.Timestamp|None=None)->float:
         ts=self._ts(signal.timestamp); current=self._ts(pd.Timestamp.now(tz=IST_TIMEZONE) if now is None else now); age=(current-ts).total_seconds()/3600
         if age<0:raise ValueError("Signal timestamp cannot be in the future")
         return age
-    def is_fresh(self,signal:StrategySignal,*,now:pd.Timestamp|None=None)->bool:return self.age_hours(signal,now=now)<=1
+    def is_fresh(self,signal:Signal,*,now:pd.Timestamp|None=None)->bool:return self.age_hours(signal,now=now)<=1
     @classmethod
-    def signal_key(cls,signal:StrategySignal,*,symbol:str)->str:
+    def signal_key(cls,signal:Signal,*,symbol:str)->str:
         symbol=symbol.strip().upper()
         if not symbol:raise ValueError("Signal symbol cannot be empty")
-        return "|".join((signal.strategy,symbol,signal.signal,cls._ts(signal.timestamp).isoformat()))
-    def repeat_count(self,signal:StrategySignal,*,symbol:str)->int:
+        return "|".join((signal.strategy,symbol,signal.direction,cls._ts(signal.timestamp).isoformat()))
+    def repeat_count(self,signal:Signal,*,symbol:str)->int:
         with self._lock:return self._counts.get(self.signal_key(signal,symbol=symbol),0)
-    def can_send(self,signal:StrategySignal,*,symbol:str,now:pd.Timestamp|None=None)->bool:
-        return signal.signal in ("BUY","SELL","NEUTRAL") and self.is_fresh(signal,now=now) and self.repeat_count(signal,symbol=symbol)<2
-    def accept(self,signal:StrategySignal,*,symbol:str,now:pd.Timestamp|None=None)->bool:
+    def can_send(self,signal:Signal,*,symbol:str,now:pd.Timestamp|None=None)->bool:
+        return signal.direction in ("BUY","SELL","NEUTRAL") and self.is_fresh(signal,now=now) and self.repeat_count(signal,symbol=symbol)<2
+    def accept(self,signal:Signal,*,symbol:str,now:pd.Timestamp|None=None)->bool:
         if not self.can_send(signal,symbol=symbol,now=now):return False
         key=self.signal_key(signal,symbol=symbol)
         with self._lock:
@@ -49,6 +49,6 @@ class SignalGate:
         if not isinstance(counts,dict):raise TypeError("Signal counts must be a dictionary")
         with self._lock:self._counts={k:min(max(int(v),0),2) for k,v in counts.items() if isinstance(k,str)}
 
-def signal_status(signal:StrategySignal,*,now:pd.Timestamp|None=None)->tuple[str,float]:
+def signal_status(signal:Signal,*,now:pd.Timestamp|None=None)->tuple[str,float]:
     gate=SignalGate();age=gate.age_hours(signal,now=now);return ("FRESH" if age<=1 else "STALE",age)
 __all__=["SignalGate","MAX_MESSAGE_SEND_COUNT","signal_status"]

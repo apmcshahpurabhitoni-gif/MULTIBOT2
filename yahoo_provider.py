@@ -9,7 +9,10 @@ import time
 from threading import RLock
 from typing import Optional
 import pandas as pd
-import yfinance as yf
+try:
+    import yfinance as yf
+except ImportError:  # test/import environments may not have optional runtime deps installed
+    yf = None
 from candles import validate_hourly_observations
 from config import IST_TIMEZONE
 

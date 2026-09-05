@@ -1,64 +1,49 @@
-# MULTIBOT2 Finalization Rulebook
+# MULTIBOT2 Finalization Rulebook — v3.0.0
 
-This is the mandatory release contract. A green test suite alone never means finished.
+## 🔒 Locked rules
 
-## Source of truth
-- `multi-strategy-telegram-bot` is the original behavior reference.
-- `MULTIBOT2` locked specifications override obsolete behavior only where explicitly locked.
-- Conflicts must be traced to source; never guessed.
+1. Paper trading only.
+2. Yahoo Finance only.
+3. Asia/Kolkata timezone.
+4. Exactly 19 live assets.
+5. ₹100,000 account.
+6. ₹2,000 maximum risk per trade.
+7. 1× leverage.
+8. Account limits: macro 20, nifty 5, ny_session 3, sweep_4h 3.
+9. Freshness: age ≤1h fresh; >1h stale; future invalid.
+10. Signal identity: strategy + symbol + direction + candle timestamp.
+11. Maximum two sends per identity: initial + one reminder.
+12. No directional signal = no trade / signal dispatch.
+13. Supabase authoritative, SQLite fallback.
+14. Dashboard is presentation/configuration UI; backend remains authoritative.
 
-## Locked rules
-- Live universe: exactly 19 assets — 15 NSE stocks + NIFTY 50 + BANK NIFTY + Gold + Bitcoin.
-- NSE stocks use `.NS` Yahoo symbols; indexes/Gold/Bitcoin use their configured native Yahoo symbols.
-- TrendPulse: 1H signal with confirmed 4H filter across all 19 assets.
-- Sweep V2: NIFTY/BANK NIFTY 1H; NSE stocks/Gold/Bitcoin 4H.
-- Bitcoin Sweep starts: 01:30, 05:30, 09:30, 13:30, 17:30, 21:30 IST.
-- Gold Sweep starts: 02:30, 06:30, 10:30, 14:30, 18:30, 22:30 IST.
-- Paper trading only.
-- Account limits: `macro=20`, `nifty=5`, `ny_session=3`, `sweep_4h=3`.
-- TrendPulse risk: INR 2,000 per trade.
-- TrendPulse SL: 1.5 ATR; TP: 3 ATR.
-- Completed candles only.
-- Freshness: exactly 1 hour; older than 1 hour is stale.
-- Duplicate identity: strategy + symbol + direction + candle timestamp.
-- Maximum two sends: initial + one reminder; never a third.
-- Sweep V2: strict two-sided sweep followed by final-close classification.
-- Sweep uses market entry, sweep extreme SL, and 1:2 target.
-- MULTIBOT2 has no pending-sweep persistence or pending-sweep workflow.
+## 🧩 Architecture rules
 
-## Candle invariants
-- All timestamps are timezone-aware IST.
-- Canonical NSE 1H candles come from actual 1-minute session data.
-- Valid NSE hourly closes are 10:15, 11:15, 12:15, 13:15, 14:15, 15:15.
-- Never fabricate a 15:15→16:15 NSE candle.
-- Incomplete candles never reach strategy evaluation.
-- Higher-timeframe candles must also be confirmed.
-- The latest completed candle is evaluated; it is not discarded because an obsolete architecture expected a forming final row.
+- Strategies are automatic plug-ins.
+- New strategies belong under `strategies/`.
+- Normal new strategies must not require changes to `main.py` or shared lifecycle modules.
+- Strategy timeframes are strategy-owned.
+- Strategy parameters are validated by the strategy/backend contract.
+- Core safety rules cannot be overridden by dashboard configuration.
+- Telegram, DB and dashboard do not implement strategy logic.
+- Backtesting is registry-driven.
 
-## Runtime pipeline
-`provider -> validation -> canonical candles -> strategy -> completion -> freshness -> duplicate gate -> account/risk -> persistence -> Telegram/dashboard`
+## 🧪 Release checks
 
-No strategy may bypass the pipeline. Compatibility APIs may not silently turn valid signals into `NO_SIGNAL`. Scanning must not consume duplicate allowance until acceptance/send.
+```bash
+python -m compileall -q .
+pytest
+```
 
-## Persistence
-- Balances and daily counters survive restart.
-- Active trades and closed trade history survive restart.
-- Signal send counts and reminder state survive restart.
-- Supabase is the production persistence backend configured through `SUPABASE_URL` and `SUPABASE_KEY`.
-- MULTIBOT2 does not create, restore, or depend on `pending_sweeps`.
-- There is one authoritative state implementation. State transitions are idempotent.
+Also search for:
 
-## Telegram
-BUY uses green direction icon; SELL uses red. Freshness icon is independent: `✅` fresh and `⚠️` stale. User-facing names do not leak provider tickers when mappings exist. Required signal fields include timeframe, candle close, age, action and risk. Stale signals never open trades. Reminder is one hour after initial send and cannot produce a third message.
+```text
+TrendPulse
+strategy-specific branches in main.py
+stale global timeframe assumptions
+TODO/FIXME placeholders
+orphan imports
+obsolete tests
+```
 
-## Dashboard/API
-Dashboard is presentation over authoritative state. Rounding never changes execution. Health reflects actual runtime. Backtest endpoints use current APIs only.
-
-## Deployment / uptime
-- Render runs the web service with `pip install -e .` and `python main.py`.
-- Render supplies Telegram and Supabase credentials through environment variables.
-- `/ping` is a lightweight health/keep-alive endpoint and must not scan markets or mutate trading state.
-- The existing external cron job may GET `/ping` every 10 minutes to keep the Render free service warm.
-
-## Final acceptance gates
-Inspect every source file and test. Search for TODO/FIXME/pass placeholders, obsolete API arguments, duplicate implementations, old limits, old freshness, old candle assumptions, dead APIs and undocumented claims. Run full tests, import/syntax checks and CI. Perform clean-start and restart/persistence smoke tests. Any failed gate means NOT FINISHED.
+A release is not final if legacy strategy architecture remains active or if documentation contradicts runtime behavior.

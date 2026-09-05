@@ -1,23 +1,31 @@
-MULTIBOT2 fixed replacement files
-================================
-Source baseline: uploaded MULTIBOT2-main.zip
-These are COMPLETE replacement files, not an installer or patch script.
+MULTIBOT2 v3.0.0
+================
 
-Canonical changes included:
-- 19 live assets: 15 NSE stocks + NIFTY + BANK NIFTY + Gold + Bitcoin.
-- TrendPulse: completed 1H signal + confirmed 4H filter.
-- Global 1H TrendPulse drops the currently forming bar.
-- Sweep V2: strict two-sided sweep, final-close classification, canonical 1H/4H schedules.
-- Sweep trade planning uses the actual detected sweep candle's high/low for the extreme SL.
-- Generic asset/Yahoo symbol handling; no forced .NS on non-NSE assets.
-- Dashboard/API universe is 19 assets.
-- Telegram/startup/dashboard version and universe labels are consistent.
-- Backtest endpoint fetches canonical NSE 1H candles and symbol-aware Sweep V2 candles.
-- Tests updated for the 19-asset contract.
+Architecture
+- Automatic strategy discovery under strategies/.
+- Stable Strategy / StrategyManifest / Signal contracts.
+- Shared signal -> freshness -> duplicate -> risk -> trade -> persistence -> Telegram lifecycle.
+- Strategy-owned timeframes and data requests.
+- Generic registry-driven backtesting.
 
-Validation performed:
-- Python compile check: PASS.
-- pytest suite with a temporary local yfinance stub (no network): PASS.
-- Network package installation was unavailable in this environment, so real Yahoo connectivity was not exercised here.
+Built-in strategies
+- Adaptive Trend Momentum 1.0.0: BTC-USD + GC=F, 1D.
+- Sweep V2 2.0.0: 19-asset canonical sweep schedules.
 
-Replace the matching paths in your repo with these files.
+Locked rules
+- Paper only, Yahoo only, 19 assets, ₹100,000, ₹2,000 risk, 1x leverage.
+- Freshness exactly 1 hour.
+- Maximum two sends per signal identity.
+- Supabase authoritative + SQLite fallback.
+
+Research
+- 11 common backtest metrics.
+- Transparent 0-100 rating with category breakdown.
+- Strategy version + parameter snapshots.
+
+Documentation
+- README.md
+- AI_REBUILD_SPEC.md
+- STRATEGY_DEVELOPER_GUIDE.md
+- FINALIZATION_RULEBOOK.md
+- MULTIBOT2_CANONICAL_NOTES.md

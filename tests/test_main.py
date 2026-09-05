@@ -1,15 +1,7 @@
-from main import (
-    build_market_data_provider,
-    validate_runtime_configuration,
-)
-from yahoo_provider import YahooProvider
+import main
 
+def test_registry_is_strategy_driven():
+    main.ensure_runtime(); assert set(main.REGISTRY.ids())=={"adaptive_trend","sweep_v2"}
 
-def test_runtime_configuration_is_valid():
-    validate_runtime_configuration()
-
-
-def test_market_data_provider_is_yahoo():
-    provider = build_market_data_provider()
-
-    assert isinstance(provider, YahooProvider)
+def test_ping_contract_exists():
+    assert callable(main.web_server) and callable(main.run_strategy_cycle)

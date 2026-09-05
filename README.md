@@ -1,91 +1,490 @@
-# MULTIBOT2
+# 🤖 MULTIBOT2
 
-Complete paper-trading bot based on the original `multi-strategy-telegram-bot`, with the locked MULTIBOT2 fixes applied as one coherent runtime.
+> ### 🧠 A modular, plug-and-play algorithmic **paper-trading engine**
+>
+> **Yahoo Finance · Multi-Strategy · Risk Controlled · Telegram · Supabase · Dashboard · Strategy Lab**
 
-**Current release: v2.0.0**
+[![Version](https://img.shields.io/badge/version-3.0.0-111827?style=for-the-badge)](.)
+[![Mode](https://img.shields.io/badge/mode-PAPER-16a34a?style=for-the-badge)](.)
+[![Provider](https://img.shields.io/badge/data-Yahoo%20Finance-7c3aed?style=for-the-badge)](.)
+[![Python](https://img.shields.io/badge/python-3.11%2B-2563eb?style=for-the-badge)](.)
 
-## What's new in v2.0.0
+---
 
-- Forex Factory economic calendar in the dashboard, filtered by exact date and impact (High / Medium / Low / Holiday).
-- Calendar timestamps are normalized to Asia/Kolkata for the dashboard while preserving the Forex Factory source link.
-- Historical backtesting now supports the fixed 19-asset live universe (15 NSE stocks + NIFTY + BANK NIFTY + Gold + Bitcoin) plus Bitcoin (`BTC-USD`) and Gold Futures (`GC=F`).
-- Backtest results show directional totals, trades taken, planned risk and a daily signal graph.
-- Fixed the modern `yfinance` / `curl_cffi` session incompatibility that was causing historical backtests to fail.
-- Period-aware Yahoo caching prevents a previous 30-day fetch from being reused for a different backtest period.
-- Signals are grouped by candle date and the dashboard separates “no signals” from “no scan performed”.
-- Light/dark and modern/neo-brutalist appearance controls were rebuilt with tighter responsive spacing and accessible controls.
-- Release version and What's New are visible in Tools and the dashboard header.
+## 🌟 What is MULTIBOT2?
 
-## Runtime contract
+MULTIBOT2 is a **paper-trading research and signal engine** designed around one idea:
 
-`Yahoo 1m → canonical NSE 1H → confirmed 4H → strategy → 1h freshness → persistent duplicate/reminder gate → independent account risk → paper trade → approved Telegram → Supabase persistence → dashboard`
+> 🧩 **Strategies should be replaceable. Core trading safety should not be.**
 
-## Locked rules
+The system scans a locked 19-asset universe using Yahoo Finance, evaluates independently discoverable strategy plug-ins, validates signals, applies freshness and duplicate controls, sizes trades using the locked risk model, persists state, sends Telegram notifications, and exposes operational data to the dashboard.
 
-- 19 live assets fixed live universe.
-- Yahoo Finance only.
-- NSE 1H candles are built from complete 60-minute 1m groups in the 09:15–15:30 cash session.
-- Valid hourly candle closes: 10:15, 11:15, 12:15, 13:15, 14:15, 15:15.
-- No fabricated 15:15–16:15 candle.
-- TrendPulse evaluates confirmed latest candles; higher-timeframe filters use confirmed 4H candles.
-- Freshness is exactly 1 hour: age <= 1h is fresh, age > 1h is stale.
-- Signal identity is strategy + symbol + direction + candle timestamp.
-- Maximum two Telegram sends: initial + one one-hour reminder. A third is blocked.
-- Account limits are independent: macro=20, nifty=5, ny_session=3, sweep_4h=3.
-- Risk is ₹2,000 per trade.
-- TrendPulse SL=1.5 ATR and TP=3 ATR.
-- Sweep V2 uses strict two-sided sweep confirmation, market entry, sweep extreme SL, and 1:2 TP.
-- Paper trading only; leverage is 1x.
-- Supabase is the production-authoritative persistent store for accounts, trades, signals and reminder state; SQLite is the local runtime cache/fallback.
-- MULTIBOT2 has no pending-sweep persistence or pending-sweep workflow.
+It is deliberately **paper only**. It does not place live broker orders.
 
-## Dashboard
+---
 
-The dashboard is presentation-only. It does not calculate strategy, entry, SL, TP, sizing or execution risk.
+## 🚀 What's new in v3.0.0?
 
-- **Overview** — system health, locked risk limits, 14-day signal graph, scan truth, latest signals and open trades.
-- **Trades** — active paper positions with expandable full plans.
-- **Signals** — durable dispatched history grouped by candle date, with All / Today / 7-day filters and explicit scan status.
-- **History** — completed trades grouped by close date.
-- **Forex Factory Calendar** — date selector plus impact filters, with source health and forecast/previous/actual values where supplied.
-- **Tools** — light/dark, modern/neo-brutalist, historical backtesting, daily backtest graph, What's New, candle schedule, universe, account limits and diagnostics.
+### 🧩 Plug-and-play strategies
 
-## Backtesting
+Strategies are now discovered automatically from `strategies/`. The core runtime does not need a new `if/elif` branch every time a strategy is added.
 
-Backtesting is informational and does not change live trading configuration.
+### 🧠 Adaptive Trend Momentum
 
-Supported Yahoo assets:
+TrendPulse has been retired. **Adaptive Trend Momentum** is now the BTC-USD + Gold strategy and uses daily candles with:
 
-- 19 live assets: 15 NSE stocks, NIFTY 50, BANK NIFTY, Gold (`GC=F`) and Bitcoin (`BTC-USD`). NSE stocks use `.NS`; global/index assets use their native Yahoo tickers.
-- Bitcoin: `BTC-USD`.
-- Gold Futures: `GC=F`.
+- 📈 EMA 20 / EMA 50 trend relationship
+- 🏃 40-day momentum
+- 🧱 20-day Donchian breakout
+- 🌡️ ATR 14
+- 🔎 volatility filter
+- 🟢 LONG / 🔴 SHORT / ⚪ NO SIGNAL
+- 🛑 ATR-based initial stop
+- 🎯 fixed reward/risk target
+- 🪢 optional ATR trailing-stop policy
 
-TrendPulse backtests use the same canonical close-stamped 1H path as live. Sweep V2 backtests use market-specific raw Yahoo data and the exact configured schedule boundaries. Global Sweep V2 uses 30-minute Yahoo data for the 01:30/05:30/... or 02:30/06:30/... IST 4H windows; 90d/1y global Sweep backtests are rejected because Yahoo does not provide enough 30m history for those periods.
+### 🔎 Sweep V2 preserved
 
-## Runtime components
+Sweep V2 remains available under the same strategy contract and retains its strict two-sided sweep + final-close classification model and canonical schedules.
 
-- `main.py` — executable worker orchestration, Telegram commands, dashboard APIs, scanning and trade monitoring.
-- `market_data.py` / `candles.py` — provider validation and canonical candle construction.
-- `strategies.py` — single source of truth for strategy calculations.
-- `trendpulse_runtime.py` / `trendpulse_service.py` — TrendPulse live path.
-- `sweep_service.py` — Sweep V2 live path.
-- `signal_gate.py` / `db.py` / `reminders.py` — freshness, duplicate, persistence and reminders.
-- `telegram.py` — approved message boundary.
-- `dashboard.py`, `dashboard.html`, `app.js`, `styles.css` — dashboard.
-- `news.py` — cached Forex Factory economic-calendar reader.
-- `yahoo_provider.py` — period-aware Yahoo Finance adapter.
-- `backtest.py` — deterministic backtest boundary using the same strategy functions.
+### 📊 Strategy Lab foundation
 
-## Start
+Backtesting now exposes:
 
-`python main.py`
+**Return · Max Drawdown · Sharpe · Sortino · Win Rate · Profit Factor · Number of Trades · Average Trade · Losing Streak · Exposure · Risk-Adjusted Performance**
 
-Required secrets are environment-only: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SUPABASE_URL`, and `SUPABASE_KEY`. Optional runtime settings include `BOT_STATE_DB_PATH`, `PORT`, `SCAN_INTERVAL_SECONDS`, and `MONITOR_INTERVAL_SECONDS`. Trading rules themselves are locked in `config.py` and cannot be overridden by environment variables.
+and a transparent **0–100 Strategy Rating**.
 
-## Render / uptime
+### ⭐ Versioned experiments
 
-Render runs the web service with `pip install -e .` and `python main.py`, with `/ping` as the health/keep-alive endpoint. Keep the existing external cron job configured to GET `/ping` every 10 minutes so the Render free service is regularly awakened. `/ping` is intentionally lightweight and does not scan markets, send signals, or mutate trading state.
+Backtest results and signal metadata carry strategy version and parameter snapshots so historical decisions remain explainable.
 
-## Validation
+### 🤖 AI reconstruction documentation
 
-CI performs Python compilation, imports every runtime module, and runs the complete pytest suite. The mandatory release checklist is `FINALIZATION_RULEBOOK.md`.
+`AI_REBUILD_SPEC.md` describes the architecture, contracts, locked rules, data flow, failure behavior and implementation requirements in enough detail for another AI/developer to reconstruct the project.
+
+---
+
+## 🧭 Architecture at a glance
+
+```text
+                    ┌──────────────────────┐
+                    │      Dashboard       │
+                    │ Strategy Manager/Lab │
+                    └──────────┬───────────┘
+                               │
+                        configuration
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │  Strategy Registry   │
+                    │  automatic discovery │
+                    └──────────┬───────────┘
+                               │
+                  ┌────────────┴────────────┐
+                  ▼                         ▼
+          Adaptive Trend                Sweep V2
+                  │                         │
+                  └────────────┬────────────┘
+                               ▼
+                         Canonical Signal
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │   Generic Pipeline   │
+                    ├──────────────────────┤
+                    │ completion           │
+                    │ freshness            │
+                    │ duplicate gate       │
+                    │ account/risk         │
+                    │ trade plan            │
+                    │ persistence           │
+                    │ Telegram              │
+                    │ dashboard             │
+                    └──────────┬───────────┘
+                               ▼
+                     🗄️ Supabase / SQLite
+```
+
+---
+
+## 🧩 Plug-and-play: add a new strategy
+
+Create a folder:
+
+```text
+strategies/my_strategy/
+├── __init__.py
+├── strategy.py
+├── manifest.yaml
+└── tests/
+```
+
+Implement the stable `Strategy` contract and expose `create_strategy()`.
+
+The loader automatically discovers strategy packages at startup.
+
+### The goal
+
+Adding Strategy #3 should **not** require changing:
+
+- ❌ `main.py`
+- ❌ Telegram transport
+- ❌ Dashboard data layer
+- ❌ Database layer
+- ❌ duplicate gate
+- ❌ freshness rules
+- ❌ core risk engine
+- ❌ scheduler core
+
+The new strategy declares its own:
+
+- assets
+- timeframes
+- data requirements
+- schedule
+- parameters
+- capabilities
+- account
+- signal logic
+- initial exit policy
+- trailing policy
+- backtest support
+
+See `STRATEGY_DEVELOPER_GUIDE.md` for the exact workflow.
+
+---
+
+## 📦 Built-in strategies
+
+| Strategy | Assets | Timeframe | Main job |
+|---|---|---|---|
+| 🧠 Adaptive Trend Momentum | BTC-USD, GC=F | 1D | Trend + momentum + breakout |
+| 🔎 Sweep V2 | 19-asset universe | Asset/schedule-defined | Liquidity sweep classification |
+
+Strategies are identified by stable IDs such as `adaptive_trend` and `sweep_v2`, while human-readable names and versions are carried separately.
+
+---
+
+## 🛡️ Locked trading rules
+
+| Rule | Value |
+|---|---:|
+| 💰 Starting account | ₹100,000 |
+| 🎯 Base risk / trade | ₹2,000 |
+| ⚙️ Leverage | 1× |
+| 📡 Provider | Yahoo Finance only |
+| 🧪 Trading mode | Paper only |
+| ⏳ Signal freshness | exactly 1 hour |
+| 🔁 Maximum sends / identity | 2 |
+| 🌏 Timezone | Asia/Kolkata |
+| 🗄️ Primary persistence | Supabase |
+| 💾 Fallback | SQLite |
+
+### Account limits
+
+```text
+macro       20
+nifty        5
+ny_session   3
+sweep_4h    3
+```
+
+These are **core safety rules**. Strategy configuration cannot bypass them.
+
+---
+
+## 🔁 Signal lifecycle
+
+Every strategy follows the same safety path:
+
+```text
+📡 Yahoo data
+      ↓
+✅ validation
+      ↓
+🕯️ canonical candles
+      ↓
+🧠 strategy plug-in
+      ↓
+📨 canonical Signal
+      ↓
+⏱️ completion check
+      ↓
+⏳ freshness ≤ 1h
+      ↓
+🔁 duplicate identity check
+      ↓
+🛡️ account + risk validation
+      ↓
+📐 TradePlan
+      ↓
+💾 Supabase / SQLite
+      ↓
+💬 Telegram
+      ↓
+📊 Dashboard
+```
+
+No directional signal means **no trade and no Telegram signal dispatch**.
+
+---
+
+## 🔐 Signal identity
+
+A signal identity is:
+
+```text
+strategy + symbol + direction + candle timestamp
+```
+
+Maximum Telegram sends for one identity:
+
+```text
+1️⃣ Initial
+2️⃣ One reminder
+🚫 Third send blocked
+```
+
+Scanning alone does not consume the send allowance.
+
+---
+
+## 📊 Strategy Lab & rating
+
+Every supported backtest should expose the same analytical vocabulary.
+
+### Metrics
+
+- 💰 Return
+- 📉 Maximum Drawdown
+- 📈 Sharpe
+- 🛡️ Sortino
+- 🎯 Win Rate
+- 💎 Profit Factor
+- 🔢 Number of Trades
+- 💵 Average Trade
+- 🔥 Maximum Losing Streak
+- 📡 Exposure
+- ⚖️ Risk-Adjusted Performance
+
+### ⭐ Rating
+
+The Strategy Rating is a **0–100 decision-support score**, not a prediction.
+
+```text
+90–100  🟢 Exceptional
+80–89   🟢 Strong
+70–79   🟡 Good
+60–69   🟠 Moderate
+50–59   🟠 Weak
+<50     🔴 Poor
+```
+
+The rating is broken into:
+
+```text
+Performance  25%
+Risk         25%
+Consistency  20%
+Efficiency   15%
+Robustness   15%
+```
+
+The robustness component also considers sample size and losing-streak behavior so a tiny number of lucky trades does not automatically dominate a larger sample.
+
+---
+
+## 🧪 Reproducible research
+
+Backtests retain the identity of the experiment:
+
+```text
+strategy ID
+strategy version
+symbol
+timeframe
+parameter snapshot
+start/end period
+capital/risk assumptions
+metrics
+rating + breakdown
+```
+
+This lets you answer:
+
+> “Which exact strategy version and parameters produced this result?”
+
+---
+
+## 🌐 Live universe
+
+Exactly **19 live assets** are configured:
+
+### 🇮🇳 NSE stocks
+
+`RELIANCE · BHARTIARTL · HDFCBANK · ICICIBANK · SBIN · TCS · BAJFINANCE · LT · LICI · SUNPHARMA · HINDUNILVR · INFY · TITAN · MARUTI · KOTAKBANK`
+
+### 📊 Indices
+
+`^NSEI · ^NSEBANK`
+
+### 🌍 Global
+
+`GC=F · BTC-USD`
+
+The universe is intentionally locked.
+
+---
+
+## 🔎 Sweep V2
+
+Sweep V2 remains a separate plug-in, but it uses the same core lifecycle.
+
+### Rules
+
+- two-sided sweep required
+- final-close classification
+- BUY / SELL / NEUTRAL
+- market entry
+- sweep extreme stop
+- 1:2 reward/risk target
+- no pending-sweep persistence/workflow
+
+### Canonical schedules
+
+**Bitcoin:** 01:30 · 05:30 · 09:30 · 13:30 · 17:30 · 21:30 IST
+
+**Gold:** 02:30 · 06:30 · 10:30 · 14:30 · 18:30 · 22:30 IST
+
+**NIFTY / BANK NIFTY:** 09:15 · 10:15 · 11:15 · 12:15 · 13:15 · 14:15 IST
+
+**NSE stocks:** 09:15–13:15 and 13:15–15:15 session segments
+
+---
+
+## 💬 Telegram
+
+Telegram is an output/command adapter, not a strategy engine.
+
+Messages receive their strategy name, version, symbol, timeframe, entry, SL, TP, risk and status from the canonical signal/trade model.
+
+The bot also provides operational commands such as `/start`, `/check`, `/balance`, `/summary`, `/risk`, `/stats`, `/weekly`, `/backtest`, `/test`, `/newspause` and `/refreshnews`.
+
+---
+
+## 🗄️ Persistence
+
+MULTIBOT2 uses:
+
+```text
+Supabase  → authoritative production persistence
+SQLite    → local state/cache/fallback
+```
+
+Signal send history is persisted so duplicate protection can survive process restarts.
+
+---
+
+## 🏗️ Repository structure
+
+```text
+MULTIBOT2/
+├── main.py                    # runtime orchestration
+├── config.py                  # locked system configuration
+├── strategy_engine.py          # strategy data/evaluation boundary
+├── strategy_service.py         # shared signal lifecycle
+├── backtest.py                 # registry-driven research engine
+├── trading.py                  # account/risk/trade primitives
+├── signal_gate.py              # freshness + duplicate controls
+├── market_data.py              # canonical market data helpers
+├── candles.py                  # candle normalization/building
+├── yahoo_provider.py            # Yahoo-only provider
+├── db.py                        # Supabase + SQLite persistence
+├── telegram.py                  # Telegram adapter
+├── dashboard.py                 # dashboard backend payloads
+├── sweep_engine.py              # Sweep V2 calculations
+├── sweep_service.py             # Sweep compatibility facade
+│
+├── strategies/
+│   ├── base.py                 # stable plug-in contract
+│   ├── registry.py              # automatic discovery
+│   ├── _template/              # new-strategy starter
+│   ├── adaptive_trend/          # Adaptive Trend Momentum
+│   └── sweep_v2/                # Sweep V2 plug-in
+│
+├── tests/                       # canonical test suite
+│
+├── README.md                    # human-facing documentation
+├── AI_REBUILD_SPEC.md           # complete AI reconstruction contract
+├── STRATEGY_DEVELOPER_GUIDE.md  # how to create a plug-in
+├── FINALIZATION_RULEBOOK.md     # release/regression rules
+└── MULTIBOT2_CANONICAL_NOTES.md # compact canonical facts
+```
+
+---
+
+## 🚀 Run
+
+```bash
+pip install -e ".[test]"
+python startup.py
+python main.py
+```
+
+Render uses:
+
+```text
+python startup.py && python main.py
+```
+
+Health endpoint:
+
+```text
+/ping
+```
+
+Dashboard:
+
+```text
+https://multibot2-t74l.onrender.com/dashboard
+```
+
+---
+
+## 🧪 Validate before release
+
+```bash
+python -m compileall -q .
+pytest
+```
+
+The CI pipeline also installs the package, compiles all Python modules, imports runtime modules, and runs the complete test suite.
+
+---
+
+## 🤖 Want another AI to understand the entire project?
+
+Give it **`AI_REBUILD_SPEC.md` first**.
+
+That document is intentionally much more detailed than this README and is the canonical reconstruction guide.
+
+For strategy-only work, give it:
+
+> `AI_REBUILD_SPEC.md` + `STRATEGY_DEVELOPER_GUIDE.md`
+
+---
+
+## 🧭 Project philosophy
+
+```text
+🧩 Modular strategies
+🛡️ Immutable core safety rules
+📊 Evidence before optimization
+🔁 Reproducible experiments
+💾 Durable state
+💬 Clear notifications
+🎨 Presentation separated from trading logic
+```
+
+**MULTIBOT2 v3.0.0 — built to add strategies without rebuilding the bot.** 🚀
